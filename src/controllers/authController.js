@@ -1,14 +1,15 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { findUserByUsername } = require('../models/userModel');
+const { findUserByIdentifier } = require('../models/userModel');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'skripsi-secret-key';
 
 const login = async (req, res) => {
     const { username, password } = req.body;
 
-    // 1. Find User
-    const user = findUserByUsername(username);
+    // 1. Find User by Username OR Email
+    // req.body.username can contain either username or email
+    const user = findUserByIdentifier(username);
     if (!user) {
         return res.status(401).json({ message: 'Invalid credentials' });
     }

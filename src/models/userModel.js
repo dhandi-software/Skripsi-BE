@@ -35,11 +35,11 @@ const users = [
 ];
 
 // Helper to simulate DB find
-const findUserByUsername = (username) => {
-    return users.find(u => u.username === username);
+const findUserByIdentifier = (identifier) => {
+    return users.find(u => u.username === identifier || u.email === identifier);
 };
 
 module.exports = {
     users,
-    findUserByUsername
+    findUserByIdentifier
 };
