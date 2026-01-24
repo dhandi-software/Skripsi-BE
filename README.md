@@ -2,6 +2,26 @@
 
 Documentation for the independent Node.js Backend service for Skripsi application.
 
+### 💬 Live Chat API
+
+| Method | Endpoint | Description | Request Body |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/api/chat/upload` | Upload attachment | `FormData: { file: File }` |
+| **GET** | `/api/chat/history/:userId/:otherUserId` | Get chat history | - |
+| **GET** | `/api/chat/contacts/:userId` | Get contacts with last message | - |
+
+### 🔌 Socket.IO Events
+| Event Name | Direction | Description |
+| :--- | :--- | :--- |
+| `join` | Client -> Server | Join user room |
+| `send_message` | Client -> Server | Send new message |
+| `delete_message` | Client -> Server | Delete for everyone |
+| `delete_message_for_me` | Client -> Server | Delete for me |
+
+## 📚 API Documentation (Extended)
+
+Dokumentasi detail lainnya dapat dilihat di: **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**
+
 ## 🔐 Authentication Routes
 Base URL: `http://localhost:5000`
 
@@ -46,6 +66,22 @@ npx prisma migrate dev --name <nama_migrasi>
 `--name` adalah **label/catatan** untuk riwayat perubahan yang Anda lakukan. Ini seperti memberi judul pada bab buku agar kita tahu apa yang berubah di titik itu.
 - Contoh: `npx prisma migrate dev --name init` (Inisialisasi awal)
 - Contoh: `npx prisma migrate dev --name tambah_tabel_nilai` (Jika nanti menambah tabel nilai)
+
+### 🌱 Database Seeding (Isi Data Awal)
+Untuk mengisi database dengan data user bawaan (Kaprodi, Dosen, Staf, Mahasiswa), jalankan perintah:
+
+**Command:**
+```bash
+npm run seed
+```
+atau manual:
+```bash
+node prisma/seed.js
+```
+
+**Data User Bawaan:**
+- Password default: `password`
+- Username: `kaprodi`, `dosen`, `staf`, `mahasiswa`
 
 ### 📝 Penilaian (Assessment) API
 

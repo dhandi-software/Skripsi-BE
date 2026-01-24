@@ -20,6 +20,10 @@ model User {
   // Relations
   mahasiswa Mahasiswa?
   dosen     Dosen?
+  
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  deletedMessages  Message[] @relation("DeletedBy")
 }
 
 model Mahasiswa {
@@ -69,4 +73,24 @@ model Bimbingan {
   
   mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
   dosen       Dosen     @relation(fields: [dosenId], references: [id])
+}
+
+model Message {
+  id            Int      @id @default(autoincrement())
+  content       String?
+  attachmentUrl String?
+  attachmentType String? // 'image', 'document', 'none'
+  senderId      Int
+  receiverId    Int?
+  isPublic      Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  isDeleted     Boolean  @default(false)
+  replyToId     Int?
+  createdAt     DateTime @default(now())
+
+  sender        User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver      User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  parent        Message? @relation("ReplyTo", fields: [replyToId], references: [id])
+  children      Message[] @relation("ReplyTo")
+  deletedBy     User[]    @relation("DeletedBy")
 }
