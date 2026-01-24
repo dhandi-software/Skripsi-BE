@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  username String   @unique
+  password String
+  role     String   // MAHASISWA, DOSEN, KAPRODI, STAF
+  email    String   @unique
+  
+  // Relations
+  mahasiswa Mahasiswa?
+  dosen     Dosen?
+}
+
+model Mahasiswa {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  nim       String   @unique
+  nama      String
+  jurusan   String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  penilaian Penilaian[]
+  bimbingan Bimbingan[]
+}
+
+model Dosen {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  nip       String   @unique
+  nama      String
+  jabatan   String
+  user      User     @relation(fields: [userId], references: [id])
+  
+  penilaian Penilaian[]
+  bimbingan Bimbingan[]
+}
+
+model Penilaian {
+  id          Int      @id @default(autoincrement())
+  mahasiswaId Int
+  dosenId     Int
+  nilai       Float
+  keterangan  String
+  tanggal     DateTime @default(now())
+  
+  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
+  dosen       Dosen     @relation(fields: [dosenId], references: [id])
+}
+
+model Bimbingan {
+  id          Int      @id @default(autoincrement())
+  mahasiswaId Int
+  dosenId     Int
+  topik       String
+  catatan     String
+  status      String   // PENDING, APPROVED, REJECTED
+  tanggal     DateTime @default(now())
+  
+  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
+  dosen       Dosen     @relation(fields: [dosenId], references: [id])
+}

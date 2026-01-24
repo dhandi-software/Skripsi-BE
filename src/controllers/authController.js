@@ -7,42 +7,48 @@ const SECRET_KEY = process.env.JWT_SECRET || 'skripsi-secret-key';
 const login = async (req, res) => {
     const { username, password } = req.body;
 
-    // 1. Find User by Username OR Email
-    // req.body.username can contain either username or email
-    const user = findUserByIdentifier(username);
-    if (!user) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // 2. Check Password (Mocking hash check for simplicity first, or strict comparison if using plain)
-    // For this initial setup, let's assume password is '123456' for everyone to make it work quickly
-    // OR we just check if password starts with '123' if we want to be super lazy, but let's do a meaningful check.
-    // Let's assume input password is just 'password' for all for now.
-    
-    const isValid = password === 'password'; // Simplified for prototype
-    
-    if (!isValid) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    // 3. Generate Token
-    const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role },
-        SECRET_KEY,
-        { expiresIn: '1d' }
-    );
-
-    // 4. Return Response
-    return res.status(200).json({
-        message: 'Login successful',
-        token,
-        user: {
-            id: user.id,
-            username: user.username,
-            name: user.name,
-            role: user.role
+    try {
+        // 1. Find User by Username OR Email
+        const user = await findUserByIdentifier(username);
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
-    });
+
+        // 2. Check Password
+        const isValid = await bcrypt.compare(password, user.password);
+        
+        if (!isValid) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        // 3. Generate Token
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role },
+            SECRET_KEY,
+            { expiresIn: '1d' }
+        );
+
+        // 4. Return Response
+        // Flatten the structure for frontend convenience if needed, or send as is
+        const profileName = user.mahasiswa?.nama || user.dosen?.nama || user.username;
+
+        return res.status(200).json({
+            message: 'Login successful',
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                name: profileName,
+                role: user.role,
+                // Include profile IDs for easier frontend data fetching
+                mahasiswaId: user.mahasiswa?.id,
+                dosenId: user.dosen?.id
+            }
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
 };
 
 module.exports = { login };
