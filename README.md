@@ -98,3 +98,13 @@ node prisma/seed.js
 | **GET** | `/api/bimbingan` | Get all guidance sessions | - |
 | **POST** | `/api/bimbingan` | Create new guidance session | `{ "mahasiswaId": 1, "dosenId": 2, "topik": "Bab 1", "catatan": "Revisi latar belakang", "status": "PENDING" }` |
 | **GET** | `/api/bimbingan/mahasiswa/:id` | Get guidance sessions by Mahasiswa ID | - |
+
+### 👮 Admin API
+
+| Method | Endpoint | Description | Request Body |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/api/admin/create-mahasiswa` | Create new Mahasiswa account | `{ "email": "...", "password": "...", "nama": "...", "nim": "...", "jurusan": "...", "tahunMasuk": "..." }` |
+| **POST** | `/api/admin/create-dosen` | Create new Dosen account | `{ "email": "...", "password": "...", "nama": "...", "nidn": "...", "jabatan": "..." }` |
+| **GET** | `/api/admin/users-role?role=...` | Get list of users by role | - |
+| **GET** | `/api/admin/users/count?role=...` | Get count of users by role | - |
+| **GET** | `/api/admin/monitoring` | Get monitoring dashboard data | - |

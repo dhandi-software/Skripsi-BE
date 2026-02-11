@@ -29,9 +29,10 @@ model User {
 model Mahasiswa {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique
-  nim       String   @unique
+  nim       String   @unique // NPM
   nama      String
   jurusan   String
+  tahunMasuk String? // Added field
   user      User     @relation(fields: [userId], references: [id])
   
   penilaian Penilaian[]
@@ -41,9 +42,9 @@ model Mahasiswa {
 model Dosen {
   id        Int      @id @default(autoincrement())
   userId    Int      @unique
-  nip       String   @unique
+  nidn      String   @unique // Replaced NIP with NIDN
   nama      String
-  jabatan   String
+  jabatan   String   // Dosen Reguler, Pejabat Prodi, etc.
   user      User     @relation(fields: [userId], references: [id])
   
   penilaian Penilaian[]
@@ -85,8 +86,10 @@ model Message {
   isPublic      Boolean  @default(false)
   isRead        Boolean  @default(false)
   isDeleted     Boolean  @default(false)
+  isEdited      Boolean  @default(false)
   replyToId     Int?
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   sender        User     @relation("SentMessages", fields: [senderId], references: [id])
   receiver      User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])

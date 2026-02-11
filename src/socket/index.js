@@ -106,6 +106,36 @@ module.exports = (io) => {
         }
     });
 
+    socket.on('edit_message', async ({ messageId, newContent }) => {
+        try {
+            const updatedMessage = await prisma.message.update({
+                where: { id: parseInt(messageId) },
+                data: { 
+                    content: newContent,
+                    isEdited: true
+                }
+            });
+
+            const payload = { 
+                messageId, 
+                newContent, 
+                isEdited: true 
+            };
+
+            // Notify relevant parties
+            if (updatedMessage.isPublic) {
+                io.to('public_room').emit('message_edited', payload);
+            } else {
+                io.to(`user_${updatedMessage.senderId}`).emit('message_edited', payload);
+                if (updatedMessage.receiverId) {
+                    io.to(`user_${updatedMessage.receiverId}`).emit('message_edited', payload);
+                }
+            }
+        } catch (error) {
+            console.error('Error editing message:', error);
+        }
+    });
+
     socket.on('delete_message_for_me', async ({ messageId, userId }) => {
         try {
             await prisma.message.update({
