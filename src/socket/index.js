@@ -11,7 +11,7 @@ module.exports = (io) => {
     });
 
     socket.on('send_message', async (data) => {
-      const { senderId, receiverId, content, attachmentUrl, attachmentType, isPublic, replyToId } = data;
+      const { senderId, receiverId, roomId, content, attachmentUrl, attachmentType, isPublic, replyToId } = data;
 
       try {
         let messageData = {
@@ -23,7 +23,9 @@ module.exports = (io) => {
             replyToId: replyToId ? parseInt(replyToId) : null
         };
 
-        if (!isPublic) {
+        if (roomId) {
+            messageData.roomId = parseInt(roomId);
+        } else if (!isPublic && receiverId) {
             messageData.receiverId = parseInt(receiverId);
         }
 
@@ -42,17 +44,28 @@ module.exports = (io) => {
                      content: true,
                      sender: { select: { username: true } }
                  }
+            },
+            room: {
+                 include: {
+                     members: true
+                 }
             }
           }
         });
 
         if (isPublic) {
-            // Broadcast to everyone in public room (including sender)
             io.to('public_room').emit('receive_message', message);
+        } else if (roomId) {
+            // Broadcast to all members in the group
+            message.room.members.forEach((member) => {
+               if (member.userId !== parseInt(senderId)) {
+                   io.to(`user_${member.userId}`).emit('receive_message', message);
+               }
+            });
+            // Send copy back to sender
+            io.to(`user_${senderId}`).emit('message_sent', message);
         } else {
-            // Emit to receiver
             io.to(`user_${receiverId}`).emit('receive_message', message);
-            // Emit back to sender
             io.to(`user_${senderId}`).emit('message_sent', message);
         }
 
@@ -87,13 +100,18 @@ module.exports = (io) => {
         try {
             const deletedMessage = await prisma.message.update({
                 where: { id: parseInt(messageId) },
-                data: { isDeleted: true, content: 'Pesan ini telah dihapus', attachmentUrl: null }
+                data: { isDeleted: true, content: 'Pesan ini telah dihapus', attachmentUrl: null },
+                include: { room: { include: { members: true } } }
             });
 
             // We need to notify relevant parties.
             // If public, notify public room.
             if (deletedMessage.isPublic) {
                 io.to('public_room').emit('message_deleted', { messageId });
+            } else if (deletedMessage.roomId) {
+                deletedMessage.room.members.forEach((member) => {
+                    io.to(`user_${member.userId}`).emit('message_deleted', { messageId });
+                });
             } else {
                 // If private, notify sender and receiver
                 io.to(`user_${deletedMessage.senderId}`).emit('message_deleted', { messageId });
@@ -113,7 +131,8 @@ module.exports = (io) => {
                 data: { 
                     content: newContent,
                     isEdited: true
-                }
+                },
+                include: { room: { include: { members: true } } }
             });
 
             const payload = { 
@@ -125,6 +144,10 @@ module.exports = (io) => {
             // Notify relevant parties
             if (updatedMessage.isPublic) {
                 io.to('public_room').emit('message_edited', payload);
+            } else if (updatedMessage.roomId) {
+                updatedMessage.room.members.forEach((member) => {
+                    io.to(`user_${member.userId}`).emit('message_edited', payload);
+                });
             } else {
                 io.to(`user_${updatedMessage.senderId}`).emit('message_edited', payload);
                 if (updatedMessage.receiverId) {

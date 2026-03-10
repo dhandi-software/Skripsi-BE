@@ -227,7 +227,11 @@ const updateUser = async (req, res) => {
 
         const updateData = {};
         if (email) updateData.email = email;
-        if (password) updateData.password = await bcrypt.hash(password, 10);
+        // Only hash and update password if it's different from the current one (i.e. user changed it)
+        // If it's the same (pre-filled hash), ignore it.
+        if (password && password !== user.password) {
+            updateData.password = await bcrypt.hash(password, 10);
+        }
 
         // Transaction for atomic update
         await prisma.$transaction(async (prisma) => {
@@ -319,6 +323,7 @@ const getUserById = async (req, res) => {
             id: user.id,
             email: user.email,
             role: user.role,
+            password: user.password, // Include password hash so frontend can display it if needed
             ... (user.mahasiswa ? user.mahasiswa : {}),
             ... (user.dosen ? user.dosen : {})
         };
@@ -332,6 +337,30 @@ const getUserById = async (req, res) => {
     }
 }
 
+const getDashboardStats = async (req, res) => {
+    try {
+        const mahasiswaCount = await prisma.user.count({
+            where: { role: 'mahasiswa' }
+        });
+        const dosenCount = await prisma.user.count({
+            where: { role: 'dosen' }
+        });
+
+        // "Active Student" usually implies some status, but for now we'll return total verified if possible, 
+        // or just total. User asked for "active student", "total dosen".
+        // Let's assume all users in DB are "active" for now unless there's an 'isActive' flag.
+        // I will return them as 'activeStudent' and 'totalDosen'.
+        
+        res.json({
+            activeStudent: mahasiswaCount,
+            totalDosen: dosenCount
+        });
+    } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
 module.exports = {
     createMahasiswa,
     createDosen,
@@ -340,5 +369,6 @@ module.exports = {
     getMonitoringData,
     updateUser,
     deleteUser,
-    getUserById
+    getUserById,
+    getDashboardStats
 };

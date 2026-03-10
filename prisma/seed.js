@@ -1,10 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcrypt'); // Keeping for now if needed, but using static hash
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const password = await bcrypt.hash('password', 10);
+  // Hash for 'password123'
+  const passwordHash = '$2y$10$JitvuaG///Wr4waoPurrWuFcsM5dxaY/58KJ5Bz01cnQ/2ds1o3oq';
 
   // 1. Kaprodi
   await prisma.user.upsert({
@@ -13,13 +14,8 @@ async function main() {
     create: {
       username: 'kaprodi',
       email: 'kaprodi@univ.ac.id',
-      password: password,
-      role: 'KAPRODI',
-      // Assuming Kaprodi is also a lecturer, we can add Dosen profile if needed, 
-      // but for now let's stick to the base role or ask if they need specific profile data.
-      // Usually Kaprodi has a Dosen profile. Let's add it to be safe if the schema allows nulls or we want it.
-      // Checking schema previously, Dosen is optional relation on User, but Dosen model requires userId.
-      // Let's create Dosen profile for Kaprodi too.
+      password: passwordHash,
+      role: 'kaprodi',
       dosen: {
         create: {
             nip: '198001012005011001',
@@ -37,8 +33,8 @@ async function main() {
     create: {
       username: 'dosen',
       email: 'dosen@univ.ac.id',
-      password: password,
-      role: 'DOSEN',
+      password: passwordHash,
+      role: 'dosen',
       dosen: {
         create: {
             nip: '198505052010011002',
@@ -56,8 +52,8 @@ async function main() {
     create: {
       username: 'staf',
       email: 'staf@univ.ac.id',
-      password: password,
-      role: 'STAF',
+      password: passwordHash,
+      role: 'staf',
     },
   });
 
@@ -68,8 +64,8 @@ async function main() {
     create: {
       username: 'mahasiswa',
       email: 'mahasiswa@student.univ.ac.id',
-      password: password,
-      role: 'MAHASISWA',
+      password: passwordHash,
+      role: 'mahasiswa',
       mahasiswa: {
         create: {
             nim: '4519210001',
