@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function main() {
     const email = "adminunivpancasila@univ.ac.id";
-    const password = "password123";
+    const password = "482c811da5d5b4bc6d497ffa98491e38"; //password123
 
     console.log(`Seeding admin user: ${email}...`);
 

@@ -146,24 +146,32 @@ exports.getContacts = async (req, res) => {
 
         const contactsWithLastMessage = allContacts.map(contact => {
             let lastMsg;
+            let unreadCount = 0;
             if (contact.isGroup) {
-                lastMsg = messages.find(m => m.roomId === contact.realId);
+                const groupMsgs = messages.filter(m => m.roomId === contact.realId);
+                lastMsg = groupMsgs[0]; // Messages are ordered desc
+                unreadCount = groupMsgs.filter(m => m.senderId !== userId && (!m.readByIds || !m.readByIds.includes(userId))).length;
             } else {
-                lastMsg = messages.find(m => 
+                const dmMsgs = messages.filter(m => 
                     !m.isPublic && !m.roomId && (
                         (m.senderId === userId && m.receiverId === contact.id) || 
                         (m.senderId === contact.id && m.receiverId === userId)
                     )
                 );
+                lastMsg = dmMsgs[0];
+                unreadCount = dmMsgs.filter(m => m.senderId === contact.id && m.receiverId === userId && !m.isRead).length;
             }
-            return { ...contact, lastMessage: lastMsg };
+            return { ...contact, lastMessage: lastMsg, unreadCount };
         });
         
-        const lastPublicMessage = messages.find(m => m.isPublic);
+        const publicMsgs = messages.filter(m => m.isPublic);
+        const lastPublicMessage = publicMsgs[0];
+        const publicUnreadCount = publicMsgs.filter(m => m.senderId !== userId && (!m.readByIds || !m.readByIds.includes(userId))).length;
         
         res.json({
             users: contactsWithLastMessage,
-            lastPublicMessage
+            lastPublicMessage,
+            publicUnreadCount
         });
     } catch (error) {
         console.error('Error fetching contacts:', error);
