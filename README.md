@@ -105,6 +105,8 @@ node prisma/seed.js
 | :--- | :--- | :--- | :--- |
 | **POST** | `/api/admin/create-mahasiswa` | Create new Mahasiswa account | `{ "email": "...", "password": "...", "nama": "...", "nim": "...", "jurusan": "...", "tahunMasuk": "..." }` |
 | **POST** | `/api/admin/create-dosen` | Create new Dosen account | `{ "email": "...", "password": "...", "nama": "...", "nidn": "...", "jabatan": "..." }` |
+| **PUT** | `/api/admin/users/:id` | Update user account | `{ "email": "...", "name": "...", "role": "...", "nim": "...", "nidn": "...", "jurusan": "...", "tahunMasuk": "...", "jabatan": "..." }` |
+| **DELETE** | `/api/admin/users/:id` | Delete user account | - |
 | **GET** | `/api/admin/users-role?role=...` | Get list of users by role | - |
 | **GET** | `/api/admin/users/count?role=...` | Get count of users by role | - |
 | **GET** | `/api/admin/monitoring` | Get monitoring dashboard data | - |

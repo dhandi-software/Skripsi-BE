@@ -1,0 +1,25 @@
+{
+  "id": 2,
+  "userId": 3,
+  "nim": "45222101474",
+  "nama": "Dhandi",
+  "jurusan": "Teknik Informatika",
+  "tahunMasuk": "2022",
+  "pengajuanJudul": [
+    {
+      "id": 2,
+      "mahasiswaId": 2,
+      "dosenId": 2,
+      "judul": "Dhandi Adam Ganteng Bangget asd asd asad as sadasdas  asdad",
+      "peminatan": "Software Engineering",
+      "semester": "7",
+      "tahunAkademik": "2025/2026",
+      "sksDicapai": "100",
+      "sksNilaiD": "0",
+      "ipk": "3.53",
+      "batasStudi": "2030",
+      "status": "REJECTED",
+      "tanggal": "2026-02-24T08:56:10.405Z"
+    }
+  ]
+}

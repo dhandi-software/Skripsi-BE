@@ -25,8 +25,16 @@ const login = async (req, res) => {
         const token = jwt.sign(
             { id: user.id, username: user.username, role: user.role },
             SECRET_KEY,
-            { expiresIn: '1d' }
+            { expiresIn: '30d' }
         );
+
+        // Set HttpOnly Cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
 
         // 4. Return Response
         // Flatten the structure for frontend convenience if needed, or send as is
@@ -51,4 +59,9 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { login };
+const logout = (req, res) => {
+    res.clearCookie('token');
+    return res.status(200).json({ message: 'Logged out successfully' });
+};
+
+module.exports = { login, logout };

@@ -18,8 +18,15 @@ exports.getChatHistory = async (req, res) => {
                 isPublic: true,
                 NOT: { deletedBy: { some: { id: parseInt(userId) } } }
             };
+        } else if (otherUserId.startsWith('group_')) {
+            const roomId = parseInt(otherUserId.split('_')[1]);
+            whereClause = {
+                roomId: roomId,
+                NOT: { deletedBy: { some: { id: parseInt(userId) } } }
+            };
         } else {
             whereClause = {
+                roomId: null,
                 OR: [
                     { senderId: parseInt(userId), receiverId: parseInt(otherUserId) },
                     { senderId: parseInt(otherUserId), receiverId: parseInt(userId) }
@@ -34,19 +41,29 @@ exports.getChatHistory = async (req, res) => {
                 createdAt: 'asc'
             },
             include: {
-                sender: { select: { username: true, role: true } },
-                receiver: { select: { username: true, role: true } },
+                sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
+                receiver: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
                 parent: {
                     select: {
                         id: true,
                         content: true,
-                        sender: { select: { username: true } }
+                        sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
                     }
                 }
             }
         });
 
-        res.json(messages);
+        const formattedMessages = messages.map(msg => {
+            const formatName = (userObj) => userObj?.mahasiswa?.nama || userObj?.dosen?.nama || userObj?.username;
+            return {
+                ...msg,
+                sender: msg.sender ? { ...msg.sender, username: formatName(msg.sender) } : null,
+                receiver: msg.receiver ? { ...msg.receiver, username: formatName(msg.receiver) } : null,
+                parent: msg.parent ? { ...msg.parent, sender: { ...msg.parent.sender, username: formatName(msg.parent.sender) } } : null
+            };
+        });
+
+        res.json(formattedMessages);
     } catch (error) {
         console.error('Error fetching chat history:', error);
         res.status(500).json({ message: 'Internal server error' });
@@ -66,42 +83,138 @@ exports.getContacts = async (req, res) => {
                 id: true,
                 username: true,
                 role: true,
-                email: true
+                email: true,
+                mahasiswa: { select: { nama: true } },
+                dosen:     { select: { nama: true } }
             }
         });
 
-        // Fetch last message for each user
-        // Optimization: Fetch all messages involving current user
+        const formattedUsers = users.map(u => ({
+            id: u.id,
+            username: u.mahasiswa?.nama || u.dosen?.nama || u.username,
+            role: u.role,
+            email: u.email
+        }));
+
+        // Fetch user's group rooms
+        const rooms = await prisma.chatRoom.findMany({
+            where: { members: { some: { userId: userId } } },
+            include: { 
+                members: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                username: true,
+                                role: true,
+                                mahasiswa: { select: { nama: true } },
+                                dosen: { select: { nama: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const formattedRooms = rooms.map(r => ({
+            id: `group_${r.id}`, // Unique string ID for frontend
+            realId: r.id,
+            username: r.name,
+            role: "group",
+            isGroup: true,
+            adminId: r.adminId,
+            members: r.members.map(m => ({
+                id: m.user.id,
+                username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
+                role: m.user.role
+            }))
+        }));
+
+        const allContacts = [...formattedUsers, ...formattedRooms];
+
         const messages = await prisma.message.findMany({
              where: {
                 OR: [
                     { senderId: userId },
                     { receiverId: userId },
-                    { isPublic: true } // Include public messages to check for Public Room activity
+                    { isPublic: true },
+                    { roomId: { in: rooms.map(r => r.id) } }
                 ]
              },
              orderBy: { createdAt: 'desc' },
-             // We can't strictly limit here easily if we want *all* last messages for *all* contacts
         });
 
-        const usersWithLastMessage = users.map(user => {
-            // Find the most recent message between currentUser and this user
-            const lastMsg = messages.find(m => 
-                (!m.isPublic && (
-                    (m.senderId === userId && m.receiverId === user.id) || 
-                    (m.senderId === user.id && m.receiverId === userId)
-                ))
-            );
-            return { ...user, lastMessage: lastMsg };
+        const contactsWithLastMessage = allContacts.map(contact => {
+            let lastMsg;
+            let unreadCount = 0;
+            if (contact.isGroup) {
+                const groupMsgs = messages.filter(m => m.roomId === contact.realId);
+                lastMsg = groupMsgs[0]; // Messages are ordered desc
+                unreadCount = groupMsgs.filter(m => m.senderId !== userId && (!m.readByIds || !m.readByIds.includes(userId))).length;
+            } else {
+                const dmMsgs = messages.filter(m => 
+                    !m.isPublic && !m.roomId && (
+                        (m.senderId === userId && m.receiverId === contact.id) || 
+                        (m.senderId === contact.id && m.receiverId === userId)
+                    )
+                );
+                lastMsg = dmMsgs[0];
+                unreadCount = dmMsgs.filter(m => m.senderId === contact.id && m.receiverId === userId && !m.isRead).length;
+            }
+            return { ...contact, lastMessage: lastMsg, unreadCount };
         });
-        const lastPublicMessage = messages.find(m => m.isPublic);
+        
+        const publicMsgs = messages.filter(m => m.isPublic);
+        const lastPublicMessage = publicMsgs[0];
+        const publicUnreadCount = publicMsgs.filter(m => m.senderId !== userId && (!m.readByIds || !m.readByIds.includes(userId))).length;
         
         res.json({
-            users: usersWithLastMessage,
-            lastPublicMessage
+            users: contactsWithLastMessage,
+            lastPublicMessage,
+            publicUnreadCount
         });
     } catch (error) {
         console.error('Error fetching contacts:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+exports.getUnreadCount = async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        
+        // Count unread direct messages
+        const directCount = await prisma.message.count({
+            where: {
+                receiverId: userId,
+                isRead: false,
+                roomId: null,
+                isPublic: false
+            }
+        });
+
+        // Count unread group messages WHERE user is member AND user has NOT read it
+        const groupCount = await prisma.message.count({
+            where: {
+                roomId: { not: null },
+                room: { members: { some: { userId: userId } } },
+                senderId: { not: userId },
+                NOT: { readByIds: { has: userId } }
+            }
+        });
+
+        // Count unread public messages if not initiated by this user
+        const publicCount = await prisma.message.count({
+            where: {
+                isPublic: true,
+                senderId: { not: userId },
+                NOT: { readByIds: { has: userId } }
+            }
+        });
+
+        res.json({ count: directCount + groupCount + publicCount });
+    } catch (error) {
+        console.error('Error fetching unread count:', error);
         res.status(500).json({ message: 'Internal server error' });
     }
 };

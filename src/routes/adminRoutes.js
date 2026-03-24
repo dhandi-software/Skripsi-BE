@@ -13,5 +13,6 @@ router.get('/monitoring', require('../controllers/adminController').getMonitorin
 router.put('/users/:id', require('../controllers/adminController').updateUser);
 router.delete('/users/:id', require('../controllers/adminController').deleteUser);
 router.get('/users/:id', require('../controllers/adminController').getUserById);
+router.get('/dashboard-stats', require('../controllers/adminController').getDashboardStats);
 
 module.exports = router;

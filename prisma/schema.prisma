@@ -11,44 +11,50 @@ datasource db {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  username String   @unique
+  id       Int    @id @default(autoincrement())
+  username String @unique
   password String
-  role     String   // MAHASISWA, DOSEN, KAPRODI, STAF
-  email    String   @unique
-  
+  role     String // MAHASISWA, DOSEN, KAPRODI, STAF
+  email    String @unique
+
   // Relations
   mahasiswa Mahasiswa?
   dosen     Dosen?
-  
+
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
   deletedMessages  Message[] @relation("DeletedBy")
+
+  // Group Chat Relations
+  adminOfRooms    ChatRoom[]       @relation("RoomAdmin")
+  chatMemberships ChatRoomMember[]
 }
 
 model Mahasiswa {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
-  nim       String   @unique // NPM
-  nama      String
-  jurusan   String
+  id         Int     @id @default(autoincrement())
+  userId     Int     @unique
+  nim        String  @unique // NPM
+  nama       String
+  jurusan    String
   tahunMasuk String? // Added field
-  user      User     @relation(fields: [userId], references: [id])
-  
-  penilaian Penilaian[]
-  bimbingan Bimbingan[]
+  user       User    @relation(fields: [userId], references: [id])
+
+  penilaian      Penilaian[]
+  bimbingan      Bimbingan[]
+  pengajuanJudul PengajuanJudul[]
 }
 
 model Dosen {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
-  nidn      String   @unique // Replaced NIP with NIDN
-  nama      String
-  jabatan   String   // Dosen Reguler, Pejabat Prodi, etc.
-  user      User     @relation(fields: [userId], references: [id])
-  
-  penilaian Penilaian[]
-  bimbingan Bimbingan[]
+  id      Int    @id @default(autoincrement())
+  userId  Int    @unique
+  nidn    String @unique // Replaced NIP with NIDN
+  nama    String
+  jabatan String // Dosen Reguler, Pejabat Prodi, etc.
+  user    User   @relation(fields: [userId], references: [id])
+
+  penilaian      Penilaian[]
+  bimbingan      Bimbingan[]
+  pengajuanJudul PengajuanJudul[]
 }
 
 model Penilaian {
@@ -58,42 +64,111 @@ model Penilaian {
   nilai       Float
   keterangan  String
   tanggal     DateTime @default(now())
-  
-  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  dosen       Dosen     @relation(fields: [dosenId], references: [id])
+
+  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id])
+  dosen     Dosen     @relation(fields: [dosenId], references: [id])
 }
 
 model Bimbingan {
+  id                Int       @id @default(autoincrement())
+  mahasiswaId       Int
+  dosenId           Int
+  topik             String
+  catatan           String
+  status            String // ASSIGNED, SUBMITTED, REVISION, APPROVED
+  fileMahasiswa     String? // URL untuk file dari mahasiswa (.docx/.pdf)
+  fileDosen         String? // URL untuk file hasil revisi dari dosen (.docx/.pdf)
+  keteranganProgres String? // Ringkasan progres dari mahasiswa
+  jadwalBimbingan   DateTime? // Tenggat waktu / jadwal dari dosen
+  versi             Int       @default(1)
+  isReadDosen       Boolean   @default(false)
+  parentId          Int? // Referensi ke bimbingan sebelumnya jika ini adalah revisi
+  tanggal           DateTime  @default(now())
+
+  mahasiswa Mahasiswa             @relation(fields: [mahasiswaId], references: [id])
+  dosen     Dosen                 @relation(fields: [dosenId], references: [id])
+  parent    Bimbingan?            @relation("BimbinganHistory", fields: [parentId], references: [id])
+  children  Bimbingan[]           @relation("BimbinganHistory")
+  anotasi   BimbinganAnnotation[]
+}
+
+model BimbinganAnnotation {
   id          Int      @id @default(autoincrement())
-  mahasiswaId Int
-  dosenId     Int
-  topik       String
-  catatan     String
-  status      String   // PENDING, APPROVED, REJECTED
-  tanggal     DateTime @default(now())
-  
-  mahasiswa   Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  dosen       Dosen     @relation(fields: [dosenId], references: [id])
+  bimbinganId Int
+  komentar    String
+  warna       String   @default("#FFFF00") // Warna highlight
+  posisi      Json // Koordinat atau text range (serialized)
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  bimbingan Bimbingan @relation(fields: [bimbinganId], references: [id], onDelete: Cascade)
 }
 
 model Message {
-  id            Int      @id @default(autoincrement())
-  content       String?
-  attachmentUrl String?
+  id             Int      @id @default(autoincrement())
+  content        String?
+  attachmentUrl  String?
   attachmentType String? // 'image', 'document', 'none'
-  senderId      Int
-  receiverId    Int?
-  isPublic      Boolean  @default(false)
-  isRead        Boolean  @default(false)
-  isDeleted     Boolean  @default(false)
-  isEdited      Boolean  @default(false)
-  replyToId     Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  senderId       Int
+  receiverId     Int? // Nullifier if roomId is present
+  roomId         Int?
+  isPublic       Boolean  @default(false)
+  isRead         Boolean  @default(false)
+  readByIds      Int[]    @default([]) // For group chat read receipts
+  isDeleted      Boolean  @default(false)
+  isEdited       Boolean  @default(false)
+  replyToId      Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  sender        User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiver      User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  parent        Message? @relation("ReplyTo", fields: [replyToId], references: [id])
-  children      Message[] @relation("ReplyTo")
-  deletedBy     User[]    @relation("DeletedBy")
+  sender    User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiver  User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  room      ChatRoom? @relation(fields: [roomId], references: [id])
+  parent    Message?  @relation("ReplyTo", fields: [replyToId], references: [id])
+  children  Message[] @relation("ReplyTo")
+  deletedBy User[]    @relation("DeletedBy")
+}
+
+model ChatRoom {
+  id        Int      @id @default(autoincrement())
+  name      String
+  adminId   Int
+  isGroup   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  admin    User             @relation("RoomAdmin", fields: [adminId], references: [id])
+  members  ChatRoomMember[]
+  messages Message[]
+}
+
+model ChatRoomMember {
+  id       Int      @id @default(autoincrement())
+  roomId   Int
+  userId   Int
+  joinedAt DateTime @default(now())
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+}
+
+model PengajuanJudul {
+  id            Int      @id @default(autoincrement())
+  mahasiswaId   Int
+  dosenId       Int
+  judul         String
+  peminatan     String
+  semester      String
+  tahunAkademik String
+  sksDicapai    String
+  sksNilaiD     String
+  ipk           String
+  batasStudi    String
+  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  tanggal       DateTime @default(now())
+
+  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id])
+  dosen     Dosen     @relation(fields: [dosenId], references: [id])
 }
