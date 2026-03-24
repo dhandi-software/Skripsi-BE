@@ -235,6 +235,20 @@ const uploadDraftMahasiswa = async (req, res) => {
     }
 };
 
+const markAsRead = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const bimbingan = await prisma.bimbingan.update({
+            where: { id: parseInt(id) },
+            data: { isReadDosen: true }
+        });
+        res.json(bimbingan);
+    } catch (error) {
+        console.error("Mark As Read Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 const uploadRevisiDosen = async (req, res) => {
     try {
         const { id } = req.params; // Bimbingan ID
@@ -347,5 +361,6 @@ module.exports = {
     getBimbinganHistory,
     createAnnotation,
     getAnnotations,
-    deleteAnnotation
+    deleteAnnotation,
+    markAsRead
 };

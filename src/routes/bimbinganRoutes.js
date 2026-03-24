@@ -44,6 +44,7 @@ router.post('/assign-task', authenticateToken, bimbinganController.assignBimbing
 router.put('/edit-task/:id', authenticateToken, bimbinganController.updateBimbinganTask);
 router.get('/mahasiswa-active-task', authenticateToken, bimbinganController.getMahasiswaActiveTask);
 router.get('/mahasiswa-all-tasks', authenticateToken, bimbinganController.getMahasiswaAllTasks);
+router.put('/mark-as-read/:id', authenticateToken, bimbinganController.markAsRead);
 
 // Upload routes
 router.post('/upload-mahasiswa/:id', authenticateToken, upload.single('file'), bimbinganController.uploadDraftMahasiswa);

@@ -81,6 +81,7 @@ model Bimbingan {
   keteranganProgres String? // Ringkasan progres dari mahasiswa
   jadwalBimbingan   DateTime? // Tenggat waktu / jadwal dari dosen
   versi             Int       @default(1)
+  isReadDosen       Boolean   @default(false)
   parentId          Int? // Referensi ke bimbingan sebelumnya jika ini adalah revisi
   tanggal           DateTime  @default(now())
 
