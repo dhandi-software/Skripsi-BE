@@ -4,9 +4,24 @@ module.exports = (io) => {
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
-    socket.on('join', (userId) => {
-      socket.join(`user_${userId}`);
-      socket.join('public_room'); // Join public room automatically
+    socket.on('join', async (userId) => {
+      const uid = parseInt(userId);
+      socket.join(`user_${uid}`);
+      socket.join('public_room');
+      
+      // Join all group rooms the user is a member of
+      try {
+          const userRooms = await prisma.chatRoom.findMany({
+              where: { members: { some: { userId: uid } } }
+          });
+          userRooms.forEach(room => {
+              socket.join(`room_${room.id}`);
+          });
+          console.log(`User ${uid} joined ${userRooms.length} group rooms.`);
+      } catch (err) {
+          console.error("Error joining group rooms on socket:", err);
+      }
+      
       console.log(`User ${userId} joined room user_${userId} and public_room`);
     });
 
@@ -33,16 +48,28 @@ module.exports = (io) => {
           data: messageData,
           include: {
             sender: {
-              select: { username: true, role: true }
+              select: { 
+                  id: true, 
+                  username: true, 
+                  role: true,
+                  mahasiswa: { select: { nama: true } },
+                  dosen: { select: { nama: true } }
+              }
             },
             receiver: {
-              select: { username: true, role: true }
+              select: { 
+                  id: true, 
+                  username: true, 
+                  role: true,
+                  mahasiswa: { select: { nama: true } },
+                  dosen: { select: { nama: true } }
+              }
             },
             parent: {
                  select: {
                      id: true,
                      content: true,
-                     sender: { select: { username: true } }
+                     sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
                  }
             },
             room: {
@@ -53,20 +80,26 @@ module.exports = (io) => {
           }
         });
 
+        // Format sender username to full name for immediate display
+        if (message.sender) {
+            const fullName = message.sender.mahasiswa?.nama || message.sender.dosen?.nama || message.sender.username;
+            message.sender.username = fullName;
+        }
+
         if (isPublic) {
             io.to('public_room').emit('receive_message', message);
         } else if (roomId) {
-            // Broadcast to all members in the group
-            message.room.members.forEach((member) => {
-               if (member.userId !== parseInt(senderId)) {
-                   io.to(`user_${member.userId}`).emit('receive_message', message);
-               }
-            });
-            // Send copy back to sender
-            io.to(`user_${senderId}`).emit('message_sent', message);
+            const rid = parseInt(roomId);
+            // Broadcast to the group room (reaches all online members in that room)
+            // Use io.to() to reach everyone including sender if they are in multiple tabs,
+            // but useChat handles self-filtering.
+            socket.to(`room_${rid}`).emit('receive_message', message);
+            // Confirm to sender
+            socket.emit('message_sent', message);
         } else {
+            // Private DM
             io.to(`user_${receiverId}`).emit('receive_message', message);
-            io.to(`user_${senderId}`).emit('message_sent', message);
+            socket.emit('message_sent', message);
         }
 
       } catch (error) {
@@ -75,22 +108,44 @@ module.exports = (io) => {
       }
     });
 
-    socket.on('mark_read', async ({ conversationWithId, userId }) => {
+    socket.on('mark_read', async ({ conversationWithId, userId, roomId, isPublic }) => {
         try {
-            // Update all messages sent by conversationWithId to userId as read
-            await prisma.message.updateMany({
-                where: {
-                    senderId: parseInt(conversationWithId),
-                    receiverId: parseInt(userId),
-                    isRead: false
-                },
-                data: { isRead: true }
-            });
+            const uid = parseInt(userId);
+            if (isPublic) {
+                // Mark all public messages as read by this user
+                await prisma.$executeRaw`
+                    UPDATE "Message" 
+                    SET "readByIds" = array_append("readByIds", ${uid}) 
+                    WHERE "isPublic" = true 
+                    AND "senderId" != ${uid}
+                    AND NOT (${uid} = ANY("readByIds"))
+                `;
+            } else if (roomId) {
+                // Mark all messages in this room as read by this user
+                const rid = parseInt(roomId);
+                await prisma.$executeRaw`
+                    UPDATE "Message" 
+                    SET "readByIds" = array_append("readByIds", ${uid}) 
+                    WHERE "roomId" = ${rid}
+                    AND "senderId" != ${uid}
+                    AND NOT (${uid} = ANY("readByIds"))
+                `;
+            } else if (conversationWithId) {
+                // Original private chat logic
+                await prisma.message.updateMany({
+                    where: {
+                        senderId: parseInt(conversationWithId),
+                        receiverId: uid,
+                        isRead: false
+                    },
+                    data: { isRead: true }
+                });
 
-            // Notify the sender (conversationWithId) that their messages were read
-            io.to(`user_${conversationWithId}`).emit('messages_read', {
-                byUserId: userId
-            });
+                // Notify the sender that their messages were read
+                io.to(`user_${conversationWithId}`).emit('messages_read', {
+                    byUserId: uid
+                });
+            }
         } catch (error) {
             console.error('Error marking read:', error);
         }

@@ -29,6 +29,8 @@ app.use('/api/bimbingan', require('./routes/bimbinganRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/pengajuan', require('./routes/pengajuanRoutes'));
+app.use('/api/sidang', require('./routes/sidangRoutes'));
+app.use('/api/acara', require('./routes/acaraRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {
@@ -45,6 +47,7 @@ const io = new Server(server, {
 });
 
 // Initialize Socket.io logic
+app.set('io', io);
 require('./socket')(io);
 
 server.listen(PORT, () => {

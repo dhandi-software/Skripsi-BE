@@ -66,7 +66,6 @@ const getDosenBimbinganStudents = async (req, res) => {
                     include: {
                         bimbingan: {
                             orderBy: { tanggal: 'desc' },
-                            take: 1 // only need the latest task
                         }
                     }
                 }
@@ -76,6 +75,85 @@ const getDosenBimbinganStudents = async (req, res) => {
         res.json(pengajuanList);
     } catch (error) {
         console.error("Get Dosen Bimbingan Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const getLaporanAkhirDosen = async (req, res) => {
+    try {
+        const dosen = await prisma.dosen.findUnique({
+            where: { userId: req.user.id }
+        });
+        
+        if (!dosen) {
+            return res.status(404).json({ message: "Dosen profile not found" });
+        }
+
+        // Get all unique students supervised by this dosen via Bimbingan
+        const bimbinganList = await prisma.bimbingan.findMany({
+            where: { dosenId: dosen.id },
+            include: {
+                mahasiswa: {
+                    include: {
+                        pengajuanJudul: { where: { dosenId: dosen.id } },
+                        penilaian: { where: { dosenId: dosen.id } }
+                    }
+                }
+            }
+        });
+
+        const mahasiswaMap = new Map();
+        bimbinganList.forEach(b => {
+            if (!mahasiswaMap.has(b.mahasiswaId)) {
+                mahasiswaMap.set(b.mahasiswaId, {
+                    mahasiswa: b.mahasiswa,
+                    bimbingan: [],
+                    penilaian: b.mahasiswa.penilaian
+                });
+            }
+            mahasiswaMap.get(b.mahasiswaId).bimbingan.push(b);
+        });
+
+        const laporan = Array.from(mahasiswaMap.values()).map(item => {
+            const mhs = item.mahasiswa;
+            const bimbinganList = item.bimbingan;
+            const bimbinganApproved = bimbinganList.filter(b => b.status === 'APPROVED');
+            
+            const latestBimbingan = bimbinganList.length > 0 
+                ? bimbinganList.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal))[0] 
+                : null;
+            
+            let statusProgress = "Belum Mulai";
+            if (latestBimbingan) {
+                if (latestBimbingan.status === 'APPROVED') statusProgress = "Revisi Diterima";
+                else if (latestBimbingan.status === 'REVISION') statusProgress = "Revisi Bimbingan";
+                else if (latestBimbingan.status === 'SUBMITTED') statusProgress = "Menunggu Reviu";
+                else if (latestBimbingan.status === 'ASSIGNED') statusProgress = "Bimbingan Aktif";
+            }
+
+            const penilaian = item.penilaian && item.penilaian.length > 0 ? item.penilaian[0] : null;
+            if (penilaian) {
+                statusProgress = "Selesai (Sudah Dinilai)";
+            }
+
+            const pengajuan = mhs.pengajuanJudul && mhs.pengajuanJudul.length > 0 ? mhs.pengajuanJudul[0] : null;
+
+            return {
+                id: mhs.id,
+                nama: mhs.nama,
+                nim: mhs.nim,
+                judulSkripsi: pengajuan ? (pengajuan.judul || latestBimbingan?.topik || "-") : (latestBimbingan ? latestBimbingan.topik : "-"),
+                totalBimbinganSelesai: bimbinganApproved.length,
+                totalBimbingan: bimbinganList.length,
+                nilaiAkhir: penilaian ? penilaian.nilai : null,
+                keteranganPenilaian: penilaian ? penilaian.keterangan : null,
+                statusProgress
+            };
+        });
+
+        res.json(laporan);
+    } catch (error) {
+        console.error("Get Laporan Akhir Error:", error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -347,11 +425,62 @@ const deleteAnnotation = async (req, res) => {
     }
 };
 
+const getAllProdiBimbingan = async (req, res) => {
+    try {
+        const dosens = await prisma.dosen.findMany({
+            include: {
+                pengajuanJudul: {
+                    where: { status: 'APPROVED' },
+                    include: {
+                        mahasiswa: {
+                            include: {
+                                bimbingan: {
+                                    orderBy: { tanggal: 'desc' },
+                                    take: 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const result = dosens.map(d => {
+            const students = d.pengajuanJudul.map(p => ({
+                id: p.id,
+                mahasiswa: p.mahasiswa,
+                status: p.status
+            }));
+
+            // Mock progress calculation or use real if available
+            const progressSum = students.length > 0 ? 50 : 0; // Placeholder
+
+            return {
+                dosen: {
+                    id: d.id,
+                    nama: d.nama,
+                    username: d.username,
+                    photo: d.photo
+                },
+                students: students,
+                totalStudents: students.length,
+                activeProgress: progressSum
+            };
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error("Get All Prodi Bimbingan Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     getAllBimbingan,
     getBimbinganByMahasiswa,
     createBimbingan,
     getDosenBimbinganStudents,
+    getLaporanAkhirDosen,
     assignBimbinganTask,
     updateBimbinganTask,
     getMahasiswaActiveTask,
@@ -362,5 +491,6 @@ module.exports = {
     createAnnotation,
     getAnnotations,
     deleteAnnotation,
-    markAsRead
+    markAsRead,
+    getAllProdiBimbingan
 };
