@@ -159,13 +159,16 @@ exports.updatePengajuanStatus = async (req, res) => {
         const { id } = req.params;
         const { status, remarks } = req.body; // remarks optional for message
 
-        if (!['APPROVED', 'REJECTED'].includes(status)) {
+        if (!['APPROVED', 'REJECTED', 'REVISION'].includes(status)) {
             return res.status(400).json({ message: "Invalid status" });
         }
 
         const pengajuan = await prisma.pengajuanJudul.update({
             where: { id: parseInt(id) },
-            data: { status },
+            data: { 
+                status,
+                remarks: remarks || null  // simpan catatan dosen
+            },
             include: { mahasiswa: { include: { user: true } } }
         });
 

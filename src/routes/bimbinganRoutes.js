@@ -40,6 +40,7 @@ router.get('/mahasiswa/:mahasiswaId', authenticateToken, bimbinganController.get
 
 // New Routes
 router.get('/dosen-students', authenticateToken, bimbinganController.getDosenBimbinganStudents);
+router.get('/dosen-laporan-akhir', authenticateToken, bimbinganController.getLaporanAkhirDosen);
 router.post('/assign-task', authenticateToken, bimbinganController.assignBimbinganTask);
 router.put('/edit-task/:id', authenticateToken, bimbinganController.updateBimbinganTask);
 router.get('/mahasiswa-active-task', authenticateToken, bimbinganController.getMahasiswaActiveTask);
@@ -55,5 +56,7 @@ router.get('/history/:mahasiswaId/:topik', authenticateToken, bimbinganControlle
 router.post('/annotations', authenticateToken, bimbinganController.createAnnotation);
 router.get('/annotations/:bimbinganId', authenticateToken, bimbinganController.getAnnotations);
 router.delete('/annotations/:id', authenticateToken, bimbinganController.deleteAnnotation);
+
+router.get('/all-prodi', authenticateToken, bimbinganController.getAllProdiBimbingan);
 
 module.exports = router;

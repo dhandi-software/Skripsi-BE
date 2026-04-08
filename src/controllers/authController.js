@@ -50,7 +50,8 @@ const login = async (req, res) => {
                 role: user.role,
                 // Include profile IDs for easier frontend data fetching
                 mahasiswaId: user.mahasiswa?.id,
-                dosenId: user.dosen?.id
+                dosenId: user.dosen?.id,
+                jabatan: user.dosen?.jabatan
             }
         });
     } catch (error) {
