@@ -8,6 +8,7 @@ const {
     addComment,
     uploadFile,
     getUnreadCount,
+    getAcaraById,
     markAsRead
 } = require('../controllers/acaraController');
 const { authenticateToken } = require('../middleware/authMiddleware');
@@ -17,6 +18,7 @@ router.use(authenticateToken);
 
 router.get('/', getAcara);
 router.get('/unread-count', getUnreadCount);
+router.get('/:id', getAcaraById);
 router.post('/', createAcara);
 router.post('/upload', upload.single('file'), uploadFile);
 router.put('/:id', updateAcara);
