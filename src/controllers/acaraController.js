@@ -8,48 +8,75 @@ const prisma = require('../prisma');
 const getAcara = async (req, res) => {
     try {
         const userId = req.user.id;
-        const role = req.user.role;
+        const role = req.user.role?.toUpperCase();
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
 
-        const acara = await prisma.acara.findMany({
-            include: {
-                dosen: true,
-                comments: {
-                    include: {
-                        user: {
-                            select: {
-                                username: true,
-                                role: true,
-                                id: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+        // Fetch mahasiswa profile if student to get their internal ID
+        let mahasiswa = null;
+        let readAcaraIds = new Set();
+        
+        if (role === 'MAHASISWA') {
+            mahasiswa = await prisma.mahasiswa.findFirst({
+                where: { userId: parseInt(userId) }
+            });
+
+            if (mahasiswa) {
+                // Fetch all IDs this student has read
+                const readStatuses = await prisma.acaraReadStatus.findMany({
+                    where: { mahasiswaId: mahasiswa.id },
+                    select: { acaraId: true }
+                });
+                readAcaraIds = new Set(readStatuses.map(rs => rs.acaraId));
+            }
+        }
+
+        const [acara, total] = await Promise.all([
+            prisma.acara.findMany({
+                skip,
+                take: limit,
+                include: {
+                    dosen: true,
+                    comments: {
+                        include: {
+                            user: {
+                                select: {
+                                    username: true,
+                                    role: true,
+                                    id: true,
+                                    mahasiswa: { select: { nama: true } },
+                                    dosen: { select: { nama: true } }
+                                }
                             }
+                        },
+                        orderBy: {
+                            createdAt: 'asc'
                         }
-                    },
-                    orderBy: {
-                        createdAt: 'asc'
                     }
                 },
-                readBy: role === 'MAHASISWA' ? {
-                    where: {
-                        mahasiswa: {
-                            userId: userId
-                        }
-                    }
-                } : false
-            },
-            orderBy: {
-                createdAt: 'desc'
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            }),
+            prisma.acara.count()
+        ]);
+
+        // Transform results for student to have a simple isReadByMe boolean
+        const data = acara.map(item => {
+            const isReadByMe = role === 'MAHASISWA' ? readAcaraIds.has(item.id) : true;
+            return { ...item, isReadByMe };
+        });
+
+        res.json({
+            data,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             }
         });
-
-        // Transform results for student to have a simple isRead boolean
-        const results = acara.map(item => {
-            const isRead = item.readBy && item.readBy.length > 0;
-            const { readBy, ...rest } = item;
-            return { ...rest, isRead };
-        });
-
-        res.json(results);
     } catch (error) {
         console.error("Get Acara Error:", error);
         res.status(500).json({ error: error.message });
@@ -163,10 +190,12 @@ const uploadFile = async (req, res) => {
 const getUnreadCount = async (req, res) => {
     try {
         const userId = req.user.id;
-        
-        // Find mahasiswa profile first
-        const mahasiswa = await prisma.mahasiswa.findUnique({
-            where: { userId }
+        const role = req.user.role?.toUpperCase();
+
+        if (role !== 'MAHASISWA') return res.json({ count: 0 });
+
+        const mahasiswa = await prisma.mahasiswa.findFirst({
+            where: { userId: parseInt(userId) }
         });
 
         if (!mahasiswa) return res.json({ count: 0 });
@@ -193,8 +222,8 @@ const markAsRead = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const mahasiswa = await prisma.mahasiswa.findUnique({
-            where: { userId }
+        const mahasiswa = await prisma.mahasiswa.findFirst({
+            where: { userId: parseInt(userId) }
         });
 
         if (!mahasiswa) return res.status(404).json({ message: "Mahasiswa profile not found" });
