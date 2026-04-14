@@ -201,11 +201,36 @@ const deleteSidang = async (req, res) => {
     }
 };
 
+const getSidangMahasiswa = async (req, res) => {
+    try {
+        const mahasiswa = await prisma.mahasiswa.findUnique({
+            where: { userId: req.user.id }
+        });
+
+        if (!mahasiswa) return res.status(404).json({ message: "Mahasiswa profile not found" });
+
+        const sidangs = await prisma.sidang.findMany({
+            where: { mahasiswaId: mahasiswa.id },
+            include: {
+                dosen: true, // Pembimbing
+                mahasiswa: true
+            },
+            orderBy: { updatedAt: 'desc' }
+        });
+
+        res.json(sidangs);
+    } catch (error) {
+        console.error("Get Sidang Mahasiswa Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     applyForSidang,
     approveByPembimbing,
     scheduleByProdi,
     getSidangDosen,
+    getSidangMahasiswa,
     prodiApprove,
     verifyByKaprodi,
     confirmScheduleByKaprodi,

@@ -16,6 +16,7 @@ model User {
   password String
   role     String // MAHASISWA, DOSEN, KAPRODI, STAF
   email    String @unique
+  photo    String?
 
   // Relations
   mahasiswa Mahasiswa?
