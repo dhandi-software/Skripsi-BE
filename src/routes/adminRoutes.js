@@ -6,6 +6,7 @@ const { createMahasiswa, createDosen } = require('../controllers/adminController
 // e.g. router.use(verifyToken, verifyAdminRole);
 
 router.post('/create-mahasiswa', createMahasiswa);
+router.post('/create-mahasiswa-massal', require('../controllers/adminController').createMahasiswaMassal);
 router.post('/create-dosen', createDosen);
 router.get('/users/count', require('../controllers/adminController').getUserCountByRole);
 router.get('/users-role', require('../controllers/adminController').getUsersByRole);

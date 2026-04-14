@@ -61,6 +61,69 @@ const createMahasiswa = async (req, res) => {
     }
 };
 
+const createMahasiswaMassal = async (req, res) => {
+    try {
+        const { users } = req.body;
+
+        if (!users || !Array.isArray(users) || users.length === 0) {
+            return res.status(400).json({ message: "Users array is required and must not be empty" });
+        }
+
+        // Validate basic fields to catch errors early
+        for (const user of users) {
+             if (!user.email || !user.password || !user.nama || !user.nim || !user.jurusan || !user.tahunMasuk) {
+                 return res.status(400).json({ message: "All fields are required for each user in the array." });
+             }
+        }
+
+        const results = await prisma.$transaction(async (prisma) => {
+            const createdUsers = [];
+            for (const item of users) {
+                // Check if email or NIM already exists within the transaction to avoid duplicates
+                const existingUser = await prisma.user.findUnique({ where: { email: item.email } });
+                const existingNim = await prisma.mahasiswa.findUnique({ where: { nim: item.nim } });
+                
+                if (existingUser || existingNim) {
+                     // We can either skip or throw an error to abort transaction. 
+                     // Usually for mass upload, it's better to fail the whole batch or return specific errors.
+                     // Let's fail the transaction if there is a duplicate to ensure data integrity.
+                     throw new Error(`Duplicate entry found for NIM: ${item.nim} or Email: ${item.email}`);
+                }
+
+                const hashedPassword = await bcrypt.hash(item.password, 10);
+
+                const user = await prisma.user.create({
+                    data: {
+                        username: item.nim,
+                        email: item.email,
+                        password: hashedPassword,
+                        role: 'mahasiswa',
+                    }
+                });
+
+                const mahasiswa = await prisma.mahasiswa.create({
+                    data: {
+                        userId: user.id,
+                        nim: item.nim,
+                        nama: item.nama,
+                        jurusan: item.jurusan,
+                        tahunMasuk: item.tahunMasuk
+                    }
+                });
+
+                createdUsers.push({ user, mahasiswa });
+            }
+            return createdUsers;
+        });
+
+        res.status(201).json({ message: "Mahasiswa accounts created successfully", count: results.length });
+
+    } catch (error) {
+        console.error("Error creating mass mahasiswa:", error);
+        res.status(500).json({ message: error.message || "Internal Server Error" });
+    }
+};
+
 const createDosen = async (req, res) => {
     try {
         const { email, password, nama, nidn, jabatan } = req.body;
@@ -370,5 +433,6 @@ module.exports = {
     updateUser,
     deleteUser,
     getUserById,
-    getDashboardStats
+    getDashboardStats,
+    createMahasiswaMassal
 };
