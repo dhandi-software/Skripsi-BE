@@ -124,6 +124,57 @@ const createMahasiswaMassal = async (req, res) => {
     }
 };
 
+const createDosenMassal = async (req, res) => {
+    try {
+        const { users } = req.body;
+        if (!users || !Array.isArray(users)) {
+            return res.status(400).json({ message: "Invalid users data provided" });
+        }
+
+        const results = await prisma.$transaction(async (prisma) => {
+            const createdUsers = [];
+            for (const item of users) {
+                // Check if email or NIDN already exists
+                const existingUser = await prisma.user.findUnique({ where: { email: item.email } });
+                const existingNidn = await prisma.dosen.findUnique({ where: { nidn: item.nim } }); // hook passes NIDN as 'nim' for compatibility or shared UI structure
+                
+                if (existingUser || existingNidn) {
+                    throw new Error(`Duplicate entry found for NIDN: ${item.nim} or Email: ${item.email}`);
+                }
+
+                const hashedPassword = await bcrypt.hash(item.password, 10);
+
+                const user = await prisma.user.create({
+                    data: {
+                        username: item.nim,
+                        email: item.email,
+                        password: hashedPassword,
+                        role: 'dosen',
+                    }
+                });
+
+                const dosen = await prisma.dosen.create({
+                    data: {
+                        userId: user.id,
+                        nidn: item.nim,
+                        nama: item.nama,
+                        jabatan: item.jabatan || "Dosen"
+                    }
+                });
+
+                createdUsers.push({ user, dosen });
+            }
+            return createdUsers;
+        });
+
+        res.status(201).json({ message: "Dosen accounts created successfully", count: results.length });
+
+    } catch (error) {
+        console.error("Error creating mass dosen:", error);
+        res.status(500).json({ message: error.message || "Internal Server Error" });
+    }
+};
+
 const createDosen = async (req, res) => {
     try {
         const { email, password, nama, nidn, jabatan } = req.body;
@@ -337,27 +388,174 @@ const updateUser = async (req, res) => {
     }
 };
 
+const deleteUsersBatch = async (req, res) => {
+    try {
+        const { ids } = req.body; // Expecting array of integers
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ message: "Invalid user IDs provided" });
+        }
+
+        const deletedIds = [];
+        const blockedUsers = [];
+
+        for (const id of ids) {
+            try {
+                const user = await prisma.user.findUnique({ 
+                    where: { id: parseInt(id) },
+                    include: { mahasiswa: true, dosen: true }
+                });
+                
+                if (!user) continue;
+
+                // Check for ANY blocking academic data
+                let hasActiveData = false;
+                let reason = "";
+
+                if (user.role === 'mahasiswa' && user.mahasiswa) {
+                    const mid = user.mahasiswa.id;
+                    const bCount = await prisma.bimbingan.count({ where: { mahasiswaId: mid } });
+                    const sCount = await prisma.sidang.count({ where: { mahasiswaId: mid } });
+                    const pCount = await prisma.penilaian.count({ where: { mahasiswaId: mid } });
+                    const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaId: mid } });
+                    
+                    if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
+                } else if (user.role === 'dosen' && user.dosen) {
+                    const did = user.dosen.id;
+                    const bCount = await prisma.bimbingan.count({ where: { dosenId: did } });
+                    const sCount = await prisma.sidang.count({ where: { dosenId: did } });
+                    const pCount = await prisma.penilaian.count({ where: { dosenId: did } });
+                    const jCount = await prisma.pengajuanJudul.count({ where: { dosenId: did } });
+                    
+                    if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
+                }
+
+                if (hasActiveData) {
+                    blockedUsers.push(user.mahasiswa?.nama || user.dosen?.nama || user.username);
+                    continue; 
+                }
+
+                // Proceed with deletion in a per-user transaction
+                await prisma.$transaction(async (tx) => {
+                    if (user.role === 'mahasiswa') {
+                        await tx.mahasiswa.deleteMany({ where: { userId: parseInt(id) } });
+                    } else if (user.role === 'dosen') {
+                        await tx.dosen.deleteMany({ where: { userId: parseInt(id) } });
+                    }
+                    await tx.user.delete({ where: { id: parseInt(id) } });
+                });
+
+                deletedIds.push(id);
+            } catch (err) {
+                console.error(`Error deleting user ID ${id}:`, err.message);
+                blockedUsers.push(`ID ${id} (system error)`);
+            }
+        }
+
+        if (deletedIds.length === 0 && blockedUsers.length > 0) {
+            const isSingle = blockedUsers.length === 1;
+            const message = isSingle 
+                ? `Gagal menghapus. User ${blockedUsers[0]} tidak dapat dihapus karena memiliki data aktif.`
+                : `Gagal menghapus. Semua user yang dipilih (${blockedUsers.join(', ')}) memiliki data aktif.`;
+            return res.status(400).json({ message });
+        }
+
+        let message = `${deletedIds.length} user berhasil dihapus.`;
+        if (blockedUsers.length > 0) {
+            const count = blockedUsers.length;
+            // Always show names since the tooltip/toast now handles it
+            message += ` ${count} user (${blockedUsers.join(', ')}) dilewati karena memiliki bimbingan/tugas akhir.`;
+        }
+
+        res.json({ message });
+    } catch (error) {
+        console.error("Critical error in bulk delete:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
 const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
+        
+        const user = await prisma.user.findUnique({ 
+            where: { id: parseInt(id) },
+            include: { mahasiswa: true, dosen: true }
+        });
 
-        await prisma.$transaction(async (prisma) => {
-            // Check user role to delete profile first (if cascading isn't set up, but let's be safe)
-            const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Check for ANY active academic data
+        let hasActiveData = false;
+        if (user.role === 'mahasiswa' && user.mahasiswa) {
+            const mid = user.mahasiswa.id;
+            const bCount = await prisma.bimbingan.count({ where: { mahasiswaId: mid } });
+            const sCount = await prisma.sidang.count({ where: { mahasiswaId: mid } });
+            const pCount = await prisma.penilaian.count({ where: { mahasiswaId: mid } });
+            const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaId: mid } });
             
-            if (!user) {
-                // Should return here, but transaction wrapper handles error logic differently usually
-                // throwing error effectively cancels transaction
-                throw new Error("User not found"); 
+            if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
+        } else if (user.role === 'dosen' && user.dosen) {
+            const did = user.dosen.id;
+            const bCount = await prisma.bimbingan.count({ where: { dosenId: did } });
+            const sCount = await prisma.sidang.count({ where: { dosenId: did } });
+            const pCount = await prisma.penilaian.count({ where: { dosenId: did } });
+            const jCount = await prisma.pengajuanJudul.count({ where: { dosenId: did } });
+            
+            if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
+        }
+
+        const force = req.query.force === 'true';
+        
+        if (hasActiveData && !force) {
+            return res.status(400).json({ 
+                message: `Tidak dapat menghapus ${user.mahasiswa?.nama || user.dosen?.nama}. User memiliki data aktif (bimbingan/sidang/tugas akhir).` 
+            });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            const userId = parseInt(id);
+
+            // 1. Cleanup messages and chat relations (common for all roles)
+            await tx.message.deleteMany({
+                where: { OR: [{ senderId: userId }, { receiverId: userId }] }
+            });
+            await tx.chatRoomMember.deleteMany({ where: { userId } });
+            await tx.acaraComment.deleteMany({ where: { userId } });
+
+            // 2. Cleanup role-specific data
+            if (user.role === 'mahasiswa' && user.mahasiswa) {
+                const mid = user.mahasiswa.id;
+                await tx.bimbingan.deleteMany({ where: { mahasiswaId: mid } });
+                await tx.sidang.deleteMany({ where: { mahasiswaId: mid } });
+                await tx.penilaian.deleteMany({ where: { mahasiswaId: mid } });
+                await tx.pengajuanJudul.deleteMany({ where: { mahasiswaId: mid } });
+                await tx.acaraReadStatus.deleteMany({ where: { mahasiswaId: mid } });
+                
+                await tx.mahasiswa.delete({ where: { id: mid } });
+            } else if (user.role === 'dosen' && user.dosen) {
+                const did = user.dosen.id;
+                
+                // Note: Acara might have related comments and read statuses
+                // but those are mostly cascaded or cleaned above if related to students
+                // We should delete Acara specifically for Dosen
+                const acaraIds = await tx.acara.findMany({ where: { dosenId: did }, select: { id: true } });
+                const ids = acaraIds.map(a => a.id);
+                if (ids.length > 0) {
+                    await tx.acaraComment.deleteMany({ where: { acaraId: { in: ids } } });
+                    await tx.acaraReadStatus.deleteMany({ where: { acaraId: { in: ids } } });
+                    await tx.acara.deleteMany({ where: { id: { in: ids } } });
+                }
+
+                await tx.bimbingan.deleteMany({ where: { dosenId: did } });
+                await tx.sidang.deleteMany({ where: { dosenId: did } });
+                await tx.penilaian.deleteMany({ where: { dosenId: did } });
+                await tx.pengajuanJudul.deleteMany({ where: { dosenId: did } });
+                
+                await tx.dosen.delete({ where: { id: did } });
             }
 
-            if (user.role === 'mahasiswa') {
-                await prisma.mahasiswa.delete({ where: { userId: parseInt(id) } });
-            } else if (user.role === 'dosen') {
-                await prisma.dosen.delete({ where: { userId: parseInt(id) } });
-            }
-
-            await prisma.user.delete({ where: { id: parseInt(id) } });
+            // 3. Delete the base User record
+            await tx.user.delete({ where: { id: userId } });
         });
 
         res.json({ message: "User deleted successfully" });
@@ -432,7 +630,9 @@ module.exports = {
     getMonitoringData,
     updateUser,
     deleteUser,
+    deleteUsersBatch,
     getUserById,
     getDashboardStats,
-    createMahasiswaMassal
+    createMahasiswaMassal,
+    createDosenMassal
 };
