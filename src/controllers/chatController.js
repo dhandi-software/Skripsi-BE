@@ -41,13 +41,13 @@ exports.getChatHistory = async (req, res) => {
                 createdAt: 'asc'
             },
             include: {
-                sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
-                receiver: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
+                sender: { select: { username: true, role: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
+                receiver: { select: { username: true, role: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
                 parent: {
                     select: {
                         id: true,
                         content: true,
-                        sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
+                        sender: { select: { username: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
                     }
                 }
             }
@@ -84,6 +84,7 @@ exports.getContacts = async (req, res) => {
                 username: true,
                 role: true,
                 email: true,
+                photo: true,
                 mahasiswa: { select: { nama: true } },
                 dosen:     { select: { nama: true } }
             }
@@ -93,7 +94,8 @@ exports.getContacts = async (req, res) => {
             id: u.id,
             username: u.mahasiswa?.nama || u.dosen?.nama || u.username,
             role: u.role,
-            email: u.email
+            email: u.email,
+            photo: u.photo
         }));
 
         // Fetch user's group rooms
@@ -107,6 +109,7 @@ exports.getContacts = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
+                                photo: true,
                                 mahasiswa: { select: { nama: true } },
                                 dosen: { select: { nama: true } }
                             }
@@ -126,7 +129,8 @@ exports.getContacts = async (req, res) => {
             members: r.members.map(m => ({
                 id: m.user.id,
                 username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
-                role: m.user.role
+                role: m.user.role,
+                photo: m.user.photo
             }))
         }));
 

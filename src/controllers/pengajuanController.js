@@ -218,3 +218,96 @@ exports.getPengajuanById = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+exports.updateMahasiswaProfile = async (req, res) => {
+    try {
+        const { nama } = req.body;
+        const file = req.file;
+
+        const updateData = {};
+        if (file) {
+            updateData.photo = `/uploads/profile/${file.filename}`;
+        }
+
+        // Update User photo
+        const updatedUser = await prisma.user.update({
+            where: { id: req.user.id },
+            data: updateData
+        });
+
+        // Update Mahasiswa nama if provided
+        if (nama) {
+            await prisma.mahasiswa.update({
+                where: { userId: req.user.id },
+                data: { nama }
+            });
+        }
+
+        res.json({ message: "Profile updated successfully", data: updatedUser });
+    } catch (error) {
+        console.error("Update Profile Error:", error);
+        res.status(500).json({ 
+            message: "Internal server error: " + error.message,
+            error: error
+        });
+    }
+};
+exports.getDosenProfile = async (req, res) => {
+    try {
+        const dosen = await prisma.dosen.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+        
+        if (!dosen) {
+             return res.status(404).json({ message: "Dosen profile not found" });
+        }
+        res.json(dosen);
+    } catch (error) {
+        console.error("Get Dosen Profile Error:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.updateDosenProfile = async (req, res) => {
+    try {
+        const { nama, jabatan } = req.body;
+        const file = req.file;
+
+        const updateData = {};
+        if (file) {
+            updateData.photo = `/uploads/profile/${file.filename}`;
+        }
+
+        // Update User photo
+        if (Object.keys(updateData).length > 0) {
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: updateData
+            });
+        }
+
+        // Update Dosen info if provided
+        const dosenUpdate = {};
+        if (nama) dosenUpdate.nama = nama;
+        if (jabatan) dosenUpdate.jabatan = jabatan;
+
+        if (Object.keys(dosenUpdate).length > 0) {
+            await prisma.dosen.update({
+                where: { userId: req.user.id },
+                data: dosenUpdate
+            });
+        }
+
+        // Get fresh data
+        const freshProfile = await prisma.dosen.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+
+        res.json({ message: "Profile updated successfully", data: freshProfile });
+    } catch (error) {
+        console.error("Update Dosen Profile Error:", error);
+        res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+};

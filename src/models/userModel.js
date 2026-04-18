@@ -6,7 +6,8 @@ const findUserByIdentifier = async (identifier) => {
         where: {
             OR: [
                 { username: identifier },
-                { email: identifier }
+                { email: identifier },
+                { username: `D-${identifier}` } // Try with Dosen prefix for NIDN-based login
             ]
         },
         include: {

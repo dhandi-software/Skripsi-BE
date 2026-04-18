@@ -117,6 +117,77 @@ Documentation for **Skripsi-Be**, serving as the backend for the Universitas Pan
 
 ---
 
+## 👮 Admin Management
+**Prefix**: `/admin`
+
+### Create Mahasiswa (Manual)
+- **Endpoint**: `POST /create-mahasiswa`
+- **Description**: Create a single student account.
+- **Body**:
+  ```json
+  {
+    "email": "student@univ.ac.id",
+    "password": "securepassword",
+    "nama": "Student Name",
+    "nim": "4522210147",
+    "jurusan": "Teknik Informatika",
+    "tahunMasuk": "2022"
+  }
+  ```
+
+### Create Mahasiswa (Massal / Import)
+- **Endpoint**: `POST /create-mahasiswa-massal`
+- **Description**: Bulk create student accounts from an array (usually from Excel parser).
+- **Body**:
+  ```json
+  {
+    "users": [
+      {
+        "email": "student1@univ.ac.id",
+        "password": "password123",
+        "nama": "Student One",
+        "nim": "4522210001",
+        "jurusan": "Teknik Informatika",
+        "tahunMasuk": "2022"
+      },
+      ...
+    ]
+  }
+  ```
+
+### Create Dosen
+- **Endpoint**: `POST /create-dosen`
+- **Description**: Create a single lecturer account.
+- **Body**:
+  ```json
+  {
+    "email": "lecturer@univ.ac.id",
+    "password": "securepassword",
+    "nama": "Lecturer Name",
+    "nidn": "0312098801",
+    "jabatan": "Dosen Pembimbing"
+  }
+  ```
+
+### Get User List by Role
+- **Endpoint**: `GET /users-role?role=mahasiswa`
+- **Description**: Fetch all accounts belonging to a specific role.
+
+### Update User
+- **Endpoint**: `PUT /users/:id`
+- **Description**: Update profile and/or credentials of any user.
+- **Body**: Supports all fields like `email`, `name`, `password` (hashed if changed), `nim`, `nidn`, etc.
+
+### Delete User
+- **Endpoint**: `DELETE /users/:id`
+- **Description**: Permanently remove a user account.
+
+### Dashboard Stats
+- **Endpoint**: `GET /dashboard-stats`
+- **Description**: Aggregate counts for the admin dashboard.
+
+---
+
 ## 🔌 Socket.IO Events
 
 ### Client -> Server

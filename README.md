@@ -104,6 +104,7 @@ node prisma/seed.js
 | Method | Endpoint | Description | Request Body |
 | :--- | :--- | :--- | :--- |
 | **POST** | `/api/admin/create-mahasiswa` | Create new Mahasiswa account | `{ "email": "...", "password": "...", "nama": "...", "nim": "...", "jurusan": "...", "tahunMasuk": "..." }` |
+| **POST** | `/api/admin/create-mahasiswa-massal` | Bulk create accounts from array | `{ "users": [{...}] }` |
 | **POST** | `/api/admin/create-dosen` | Create new Dosen account | `{ "email": "...", "password": "...", "nama": "...", "nidn": "...", "jabatan": "..." }` |
 | **PUT** | `/api/admin/users/:id` | Update user account | `{ "email": "...", "name": "...", "role": "...", "nim": "...", "nidn": "...", "jurusan": "...", "tahunMasuk": "...", "jabatan": "..." }` |
 | **DELETE** | `/api/admin/users/:id` | Delete user account | - |

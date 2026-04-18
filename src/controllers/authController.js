@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 const { findUserByIdentifier } = require('../models/userModel');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'skripsi-secret-key';
@@ -37,7 +39,6 @@ const login = async (req, res) => {
         });
 
         // 4. Return Response
-        // Flatten the structure for frontend convenience if needed, or send as is
         const profileName = user.mahasiswa?.nama || user.dosen?.nama || user.username;
 
         return res.status(200).json({
@@ -48,7 +49,6 @@ const login = async (req, res) => {
                 username: user.username,
                 name: profileName,
                 role: user.role,
-                // Include profile IDs for easier frontend data fetching
                 mahasiswaId: user.mahasiswa?.id,
                 dosenId: user.dosen?.id,
                 jabatan: user.dosen?.jabatan
@@ -65,4 +65,36 @@ const logout = (req, res) => {
     return res.status(200).json({ message: 'Logged out successfully' });
 };
 
-module.exports = { login, logout };
+const changePassword = async (req, res) => {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const isValid = await bcrypt.compare(oldPassword, user.password);
+        if (!isValid) {
+            return res.status(400).json({ message: 'Password lama tidak sesuai' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedPassword }
+        });
+
+        return res.status(200).json({ message: 'Password berhasil diperbarui' });
+    } catch (error) {
+        console.error('Change password error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+module.exports = { login, logout, changePassword };
