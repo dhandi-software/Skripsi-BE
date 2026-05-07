@@ -43,6 +43,8 @@ router.get('/profile', authenticateToken, pengajuanController.getMahasiswaProfil
 router.get('/profile/dosen', authenticateToken, pengajuanController.getDosenProfile);
 router.put('/profile', authenticateToken, upload.single('photo'), pengajuanController.updateMahasiswaProfile);
 router.put('/profile/dosen', authenticateToken, upload.single('photo'), pengajuanController.updateDosenProfile);
+router.get('/profile/staf', authenticateToken, pengajuanController.getStafProfile);
+router.put('/profile/staf', authenticateToken, upload.single('photo'), pengajuanController.updateStafProfile);
 router.get('/profile/:filename', (req, res) => {
     const { filename } = req.params;
     const filePath = path.join(__dirname, '../../uploads/profile', filename);
@@ -53,5 +55,6 @@ router.get('/profile/:filename', (req, res) => {
     }
 });
 router.get('/:id', authenticateToken, pengajuanController.getPengajuanById);
+router.delete('/:id', authenticateToken, pengajuanController.cancelPengajuan);
 
 module.exports = router;

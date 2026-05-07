@@ -47,30 +47,46 @@ const createBimbingan = async (req, res) => {
 
 const getDosenBimbinganStudents = async (req, res) => {
     try {
-        const dosen = await prisma.dosen.findUnique({
-            where: { userId: req.user.id }
-        });
-        
-        if (!dosen) {
-            return res.status(404).json({ message: "Dosen profile not found" });
-        }
-
-        // Fetch pengajuan that are APPROVED for this dosen
-        const pengajuanList = await prisma.pengajuanJudul.findMany({
-            where: { 
-                dosenId: dosen.id,
-                status: 'APPROVED'
-            },
-            include: {
-                mahasiswa: {
-                    include: {
-                        bimbingan: {
-                            orderBy: { tanggal: 'desc' },
+        let pengajuanList;
+        if (req.user.role.toUpperCase() === 'STAF') {
+            pengajuanList = await prisma.pengajuanJudul.findMany({
+                where: { status: 'APPROVED' },
+                include: {
+                    dosen: true,
+                    mahasiswa: {
+                        include: {
+                            bimbingan: {
+                                orderBy: { tanggal: 'desc' },
+                            }
                         }
                     }
                 }
+            });
+        } else {
+            const dosen = await prisma.dosen.findUnique({
+                where: { userId: req.user.id }
+            });
+            
+            if (!dosen) {
+                return res.status(404).json({ message: "Dosen profile not found" });
             }
-        });
+
+            pengajuanList = await prisma.pengajuanJudul.findMany({
+                where: { 
+                    dosenId: dosen.id,
+                    status: 'APPROVED'
+                },
+                include: {
+                    mahasiswa: {
+                        include: {
+                            bimbingan: {
+                                orderBy: { tanggal: 'desc' },
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         res.json(pengajuanList);
     } catch (error) {

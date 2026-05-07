@@ -117,6 +117,59 @@ Documentation for **Skripsi-Be**, serving as the backend for the Universitas Pan
 
 ---
 
+## 🎓 Sidang (Defense Scheduling)
+**Prefix**: `/sidang`
+
+### Apply for Sidang
+- **Endpoint**: `POST /apply`
+- **Description**: Submit an application for a thesis defense.
+- **Roles**: `mahasiswa`, `dosen`, `staf`
+- **Behavior**: 
+  - If `staf` applies, the supervisor (pembimbing) is automatically looked up from the student's approved thesis title.
+  - Status will be `MENUNGGU_PERSETUJUAN_PEMBIMBING`.
+- **Body**:
+  ```json
+  {
+    "mahasiswaId": 1,
+    "judul": "Analisis Sistem Keamanan",
+    "tanggalSidang": "2026-05-10",
+    "waktuSidang": "09:00",
+    "lokasi": "Ruang Sidang Lt. 3",
+    "catatan": "Catatan tambahan"
+  }
+  ```
+
+### Update Schedule (Staff/Prodi)
+- **Endpoint**: `PUT /:id/schedule`
+- **Description**: Set or update the exam schedule details.
+- **Roles**: `staf`, `admin`
+- **Body**:
+  ```json
+  {
+    "tanggalSidang": "2026-05-15",
+    "waktuSidang": "10:00",
+    "lokasi": "Ruang Zoom / Aula",
+    "pengujiId": 2, 
+    "catatan": "Update jadwal terbaru"
+  }
+  ```
+
+### Approve by Supervisor (Pembimbing)
+- **Endpoint**: `PUT /:id/approve-pembimbing`
+- **Description**: Supervisor confirms they agree with the proposed schedule.
+- **Roles**: `dosen`
+
+### Approve by Prodi / Kaprodi
+- **Endpoint**: `PUT /:id/approve-prodi`
+- **Description**: Final approval for the defense schedule.
+- **Roles**: `staf`, `admin`
+
+### Get All Sidang
+- **Endpoint**: `GET /`
+- **Description**: Fetch all defense records with student and lecturer details included.
+
+---
+
 ## 👮 Admin Management
 **Prefix**: `/admin`
 

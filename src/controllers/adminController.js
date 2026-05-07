@@ -100,8 +100,19 @@ const createMahasiswaMassal = async (req, res) => {
                 const existingNim = await prisma.mahasiswa.findUnique({ where: { nim: item.nim } });
                 
                 if (existingUser || existingNim) {
-                    const detail = existingUser?.email === item.email ? "Email" : "NIM";
-                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${item.nim || item.email}`);
+                    let detail = "";
+                    let val = "";
+                    if (existingUser?.email === item.email) {
+                        detail = "Email";
+                        val = item.email;
+                    } else if (existingUser?.username === item.nim) {
+                        detail = "NIM";
+                        val = item.nim;
+                    } else {
+                        detail = "NIM";
+                        val = item.nim;
+                    }
+                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${val}`);
                 }
 
                 const hashedPassword = await bcrypt.hash(item.password, 10);
@@ -162,8 +173,19 @@ const createDosenMassal = async (req, res) => {
                 const existingNidn = await prisma.dosen.findUnique({ where: { nidn: item.nim } });
                 
                 if (existingUser || existingNidn) {
-                    const detail = existingUser?.email === item.email ? "Email" : "NIDN";
-                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${item.nim || item.email}`);
+                    let detail = "";
+                    let val = "";
+                    if (existingUser?.email === item.email) {
+                        detail = "Email";
+                        val = item.email;
+                    } else if (existingUser?.username === dosenUsername) {
+                        detail = "NIDN";
+                        val = item.nim;
+                    } else {
+                        detail = "NIDN";
+                        val = item.nim;
+                    }
+                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${val}`);
                 }
 
                 const hashedPassword = await bcrypt.hash(item.password, 10);
@@ -263,6 +285,62 @@ const createDosen = async (req, res) => {
     }
 };
 
+const createStaf = async (req, res) => {
+    try {
+        const { email, password, nama } = req.body;
+
+        // Basic Validation
+        if (!email || !password || !nama) {
+            return res.status(400).json({ message: "Email, password, and nama are required" });
+        }
+
+        // Check if user exists (Email as Username)
+        const stafUsername = `S-${email.split('@')[0]}`;
+        const existingUser = await prisma.user.findFirst({
+            where: {
+                OR: [
+                    { email },
+                    { username: stafUsername }
+                ]
+            }
+        });
+
+        if (existingUser) {
+            return res.status(400).json({ message: `Email atau username sudah terdaftar` });
+        }
+
+        // Hash Password
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Transaction
+        const result = await prisma.$transaction(async (prisma) => {
+            const user = await prisma.user.create({
+                data: {
+                    username: stafUsername,
+                    email,
+                    password: hashedPassword,
+                    role: 'staf',
+                }
+            });
+
+            const staf = await prisma.staf.create({
+                data: {
+                    userId: user.id,
+                    nama
+                }
+            });
+
+            return { user, staf };
+        });
+
+        res.status(201).json({ message: "Staf account created successfully", data: result });
+
+    } catch (error) {
+        console.error("Error creating staf:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
 const getUserCountByRole = async (req, res) => {
     try {
         const { role } = req.query;
@@ -285,28 +363,95 @@ const getUserCountByRole = async (req, res) => {
 
 const getUsersByRole = async (req, res) => {
     try {
-        const { role } = req.query;
+        const { role, page = 1, limit = 10, search = '' } = req.query;
         if (!role) return res.status(400).json({ message: "Role is required" });
 
-        let users;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const take = parseInt(limit);
         const lowerRole = role.toLowerCase();
 
+        // Build generic search condition
+        const searchCondition = search ? {
+            OR: [
+                { nama: { contains: search, mode: 'insensitive' } },
+                { user: { email: { contains: search, mode: 'insensitive' } } }
+            ]
+        } : {};
+
+        let users;
+        let total = 0;
+
         if (lowerRole === 'mahasiswa') {
-            users = await prisma.mahasiswa.findMany({
-                include: { user: { select: { email: true, id: true } } }
-            });
+            const mhsWhere = { ...searchCondition };
+            if (search) {
+                mhsWhere.OR.push({ nim: { contains: search, mode: 'insensitive' } });
+            }
+            [users, total] = await Promise.all([
+                prisma.mahasiswa.findMany({
+                    where: mhsWhere,
+                    skip,
+                    take,
+                    include: { user: { select: { email: true, id: true, username: true } } },
+                    orderBy: { nama: 'asc' }
+                }),
+                prisma.mahasiswa.count({ where: mhsWhere })
+            ]);
         } else if (lowerRole === 'dosen') {
-            users = await prisma.dosen.findMany({
-                include: { user: { select: { email: true, id: true } } }
-            });
+            const dosenWhere = { ...searchCondition };
+            if (search) {
+                dosenWhere.OR.push({ nidn: { contains: search, mode: 'insensitive' } });
+            }
+            [users, total] = await Promise.all([
+                prisma.dosen.findMany({
+                    where: dosenWhere,
+                    skip,
+                    take,
+                    include: { user: { select: { email: true, id: true, username: true } } },
+                    orderBy: { nama: 'asc' }
+                }),
+                prisma.dosen.count({ where: dosenWhere })
+            ]);
+        } else if (lowerRole === 'staf') {
+            [users, total] = await Promise.all([
+                prisma.staf.findMany({
+                    where: searchCondition,
+                    skip,
+                    take,
+                    include: { user: { select: { email: true, id: true, username: true } } },
+                    orderBy: { nama: 'asc' }
+                }),
+                prisma.staf.count({ where: searchCondition })
+            ]);
         } else {
-             users = await prisma.user.findMany({
-                where: { role: lowerRole },
-                select: { id: true, email: true, username: true, role: true }
-             });
+            // Direct User table query fallback
+            const userWhere = { role: lowerRole };
+            if (search) {
+                userWhere.OR = [
+                    { username: { contains: search, mode: 'insensitive' } },
+                    { email: { contains: search, mode: 'insensitive' } }
+                ];
+            }
+            [users, total] = await Promise.all([
+                prisma.user.findMany({
+                    where: userWhere,
+                    skip,
+                    take,
+                    select: { id: true, email: true, username: true, role: true },
+                    orderBy: { username: 'asc' }
+                }),
+                prisma.user.count({ where: userWhere })
+            ]);
         }
 
-        res.json({ data: users });
+        res.json({ 
+            data: users,
+            pagination: {
+                total,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(total / take)
+            }
+        });
     } catch (error) {
         console.error("Error fetching users:", error);
         res.status(500).json({ message: "Internal Server Error" });
@@ -439,6 +584,13 @@ const updateUser = async (req, res) => {
                          jabatan: profileData.jabatan
                      }
                  });
+             } else if (user.role === 'staf') {
+                 await prisma.staf.update({
+                     where: { userId: parseInt(id) },
+                     data: {
+                         nama: profileData.name || profileData.nama
+                     }
+                 });
              }
         });
 
@@ -502,6 +654,8 @@ const deleteUsersBatch = async (req, res) => {
                         await tx.mahasiswa.deleteMany({ where: { userId: parseInt(id) } });
                     } else if (user.role === 'dosen') {
                         await tx.dosen.deleteMany({ where: { userId: parseInt(id) } });
+                    } else if (user.role === 'staf') {
+                        await tx.staf.deleteMany({ where: { userId: parseInt(id) } });
                     }
                     await tx.user.delete({ where: { id: parseInt(id) } });
                 });
@@ -614,6 +768,8 @@ const deleteUser = async (req, res) => {
                 await tx.pengajuanJudul.deleteMany({ where: { dosenId: did } });
                 
                 await tx.dosen.delete({ where: { id: did } });
+            } else if (user.role === 'staf' && user.staf) {
+                await tx.staf.delete({ where: { id: user.staf.id } });
             }
 
             // 3. Delete the base User record
@@ -635,7 +791,8 @@ const getUserById = async (req, res) => {
             where: { id: parseInt(id) },
             include: {
                 mahasiswa: true,
-                dosen: true
+                dosen: true,
+                staf: true
             }
         });
 
@@ -648,7 +805,8 @@ const getUserById = async (req, res) => {
             role: user.role,
             password: user.password, // Include password hash so frontend can display it if needed
             ... (user.mahasiswa ? user.mahasiswa : {}),
-            ... (user.dosen ? user.dosen : {})
+            ... (user.dosen ? user.dosen : {}),
+            ... (user.staf ? user.staf : {})
         };
         // Remove redundant IDs if necessary or keep them
         
@@ -909,19 +1067,64 @@ const deleteAllDosen = async (req, res) => {
     }
 };
 
+
+const getMahasiswaSudahPengajuan = async (req, res) => {
+    try {
+        const pengajuanList = await prisma.pengajuanJudul.findMany({
+            include: {
+                mahasiswa: true,
+                dosen: true
+            },
+            orderBy: {
+                tanggal: 'desc'
+            }
+        });
+
+        res.json({ data: pengajuanList });
+    } catch (error) {
+        console.error("Error fetching students with proposal:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+const getMahasiswaTanpaPengajuan = async (req, res) => {
+    try {
+        const students = await prisma.mahasiswa.findMany({
+            where: {
+                pengajuanJudul: {
+                    none: {}
+                }
+            },
+            include: {
+                user: {
+                    select: { email: true }
+                }
+            }
+        });
+
+        res.json({ data: students });
+    } catch (error) {
+        console.error("Error fetching students without proposal:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
 module.exports = {
     createMahasiswa,
-    createDosen,
-    getUserCountByRole,
-    getUsersByRole,
-    getMonitoringData,
-    updateUser,
-    deleteUser,
-    deleteUsersBatch,
-    getUserById,
-    getDashboardStats,
     createMahasiswaMassal,
     createDosenMassal,
+    createDosen,
+    createStaf,
+    getUserCountByRole,
+    getUsersByRole,
+    updateUser,
+    deleteUsersBatch,
+    deleteUser,
+    getMonitoringData,
+    getUserById,
+    getDashboardStats,
     deleteAllMahasiswa,
-    deleteAllDosen
+    deleteAllDosen,
+    getMahasiswaTanpaPengajuan,
+    getMahasiswaSudahPengajuan
 };

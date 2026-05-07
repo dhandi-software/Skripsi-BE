@@ -9,7 +9,8 @@ const {
     deleteSidang,
     verifyByKaprodi,
     confirmScheduleByKaprodi,
-    getSidangMahasiswa
+    getSidangMahasiswa,
+    markAsSeenByMahasiswa
 } = require('../controllers/sidangController');
 const { authenticateToken } = require('../middleware/authMiddleware');
 
@@ -23,6 +24,7 @@ router.put('/verify-kaprodi/:id', verifyByKaprodi);
 router.put('/confirm-jadwal-kaprodi/:id', confirmScheduleByKaprodi);
 router.get('/dosen', getSidangDosen);
 router.get('/mahasiswa', getSidangMahasiswa);
+router.put('/mark-as-seen/:id', markAsSeenByMahasiswa);
 router.delete('/:id', deleteSidang);
 
 module.exports = router;
