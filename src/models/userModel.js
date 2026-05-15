@@ -2,6 +2,8 @@ const prisma = require('../prisma');
 const bcrypt = require('bcrypt');
 
 const findUserByIdentifier = async (identifier) => {
+    if (!identifier) return null;
+    
     return await prisma.user.findFirst({
         where: {
             OR: [

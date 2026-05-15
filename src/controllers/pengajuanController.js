@@ -23,6 +23,15 @@ exports.createPengajuan = async (req, res) => {
              console.error("Invalid dosenId:", dosenId);
              return res.status(400).json({ message: "Invalid or missing Dosen ID" });
         }
+
+        // Verify if selected dosen is Dosen Reguler (Viewer Only)
+        const checkDosen = await prisma.dosen.findUnique({
+            where: { id: parseInt(dosenId) }
+        });
+
+        if (checkDosen && checkDosen.jabatan && checkDosen.jabatan.toLowerCase().includes("reguler")) {
+            return res.status(403).json({ message: "Dosen Reguler tidak dapat dipilih sebagai pembimbing." });
+        }
         
         // Find Mahasiswa profile
         const mahasiswa = await prisma.mahasiswa.findUnique({
@@ -88,6 +97,14 @@ exports.createPengajuan = async (req, res) => {
 exports.getDosenList = async (req, res) => {
     try {
         const dosenList = await prisma.dosen.findMany({
+            where: {
+                NOT: {
+                    jabatan: {
+                        contains: 'Reguler',
+                        mode: 'insensitive'
+                    }
+                }
+            },
             select: {
                 id: true,
                 nama: true,

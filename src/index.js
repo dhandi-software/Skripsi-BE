@@ -34,6 +34,7 @@ app.use('/api/sidang', require('./routes/sidangRoutes'));
 app.use('/api/acara', require('./routes/acaraRoutes'));
 app.use('/api/download', require('./routes/downloadRoutes'));
 app.use('/api/logbook', require('./routes/logbookRoutes'));
+app.use('/api/chat-ai', require('./routes/chatAiRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {

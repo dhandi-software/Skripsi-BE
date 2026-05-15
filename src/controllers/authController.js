@@ -7,20 +7,25 @@ const { findUserByIdentifier } = require('../models/userModel');
 const SECRET_KEY = process.env.JWT_SECRET || 'skripsi-secret-key';
 
 const login = async (req, res) => {
-    const { username, password } = req.body;
+    const { username, email, password } = req.body;
+    const identifier = username || email;
 
     try {
         // 1. Find User by Username OR Email
-        const user = await findUserByIdentifier(username);
+        if (!identifier) {
+            return res.status(400).json({ message: 'Username or Email is required' });
+        }
+
+        const user = await findUserByIdentifier(identifier);
         if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+            return res.status(401).json({ message: 'Email/NIM atau password yang Anda masukkan salah.' });
         }
 
         // 2. Check Password
         const isValid = await bcrypt.compare(password, user.password);
         
         if (!isValid) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+            return res.status(401).json({ message: 'Email/NIM atau password yang Anda masukkan salah.' });
         }
 
         // 3. Generate Token
