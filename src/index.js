@@ -55,5 +55,14 @@ app.set('io', io);
 require('./socket')(io);
 
 server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    const url = `http://localhost:${PORT}`;
+    const message = `Server running on ${url}`;
+    const boxWidth = 60;
+    const border = '='.repeat(boxWidth);
+    const paddingLeft = Math.floor((boxWidth - 2 - message.length) / 2);
+    const paddingRight = boxWidth - 2 - message.length - paddingLeft;
+    const messageLine = `=${' '.repeat(paddingLeft)}${message}${' '.repeat(paddingRight)}=`;
+    const emptyLine = `=${' '.repeat(boxWidth - 2)}=`;
+
+    console.log(`\n${border}\n${border}\n${emptyLine}\n${messageLine}\n${emptyLine}\n${border}\n`);
 });

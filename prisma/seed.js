@@ -1,87 +1,38 @@
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt'); // Keeping for now if needed, but using static hash
 
 const prisma = new PrismaClient();
 
 async function main() {
   // Hash for 'password123'
-  const passwordHash = '$2y$10$JitvuaG///Wr4waoPurrWuFcsM5dxaY/58KJ5Bz01cnQ/2ds1o3oq';
+  const passwordHash = '$2b$10$tHD3fD1GY5EPyDqWNRI8CeBVc3W/QHPCu.Nh1ljd4r7irmrZawKmK';
 
-  // 1. Kaprodi
-  await prisma.user.upsert({
-    where: { username: 'kaprodi' },
-    update: {},
+  console.log('Starting seeding Admin account...');
+
+  // 1. Create Admin User
+  // ----------------------------------------------------
+  const adminUser = await prisma.user.upsert({
+    where: { username: 'adminunivpancasila' },
+    update: { password: passwordHash, role: 'admin' },
     create: {
-      username: 'kaprodi',
-      email: 'kaprodi@univ.ac.id',
+      username: 'adminunivpancasila',
+      email: 'adminunivpancasila@univ.ac.id',
       password: passwordHash,
-      role: 'kaprodi',
-      dosen: {
+      role: 'admin',
+      staf: {
         create: {
-            nip: '198001012005011001',
-            nama: 'Dr. Kaprodi, S.Kom, M.Kom',
-            jabatan: 'Kepala Program Studi'
+          nama: 'Administrator Universitas Pancasila'
         }
       }
     },
   });
 
-  // 2. Dosen Pembimbing
-  await prisma.user.upsert({
-    where: { username: 'dosen' },
-    update: {},
-    create: {
-      username: 'dosen',
-      email: 'dosen@univ.ac.id',
-      password: passwordHash,
-      role: 'dosen',
-      dosen: {
-        create: {
-            nip: '198505052010011002',
-            nama: 'Ir. Dosen Pembimbing, M.T',
-            jabatan: 'Lektor'
-        }
-      }
-    },
-  });
-
-  // 3. Staf
-  await prisma.user.upsert({
-    where: { username: 'staf' },
-    update: {},
-    create: {
-      username: 'staf',
-      email: 'staf@univ.ac.id',
-      password: passwordHash,
-      role: 'staf',
-    },
-  });
-
-  // 4. Mahasiswa
-  await prisma.user.upsert({
-    where: { username: 'mahasiswa' },
-    update: {},
-    create: {
-      username: 'mahasiswa',
-      email: 'mahasiswa@student.univ.ac.id',
-      password: passwordHash,
-      role: 'mahasiswa',
-      mahasiswa: {
-        create: {
-            nim: '4519210001',
-            nama: 'Mahasiswa Berprestasi',
-            jurusan: 'Teknik Informatika'
-        }
-      }
-    },
-  });
-
-  console.log('Seeding finished.');
+  console.log('✓ Admin account seeded successfully.');
+  console.log('All seeding tasks finished successfully!');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('Error during seeding:', e);
     process.exit(1);
   })
   .finally(async () => {

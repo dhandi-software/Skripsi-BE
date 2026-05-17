@@ -47,46 +47,80 @@ const createBimbingan = async (req, res) => {
 
 const getDosenBimbinganStudents = async (req, res) => {
     try {
-        let pengajuanList;
-        if (req.user.role.toUpperCase() === 'STAF') {
-            pengajuanList = await prisma.pengajuanJudul.findMany({
-                where: { status: 'APPROVED' },
-                include: {
-                    dosen: true,
-                    mahasiswa: {
-                        include: {
-                            bimbingan: {
-                                orderBy: { tanggal: 'desc' },
-                            }
-                        }
-                    }
-                }
-            });
-        } else {
+        const { search, status } = req.query;
+
+        // Build base query
+        const whereClause = { status: 'APPROVED' };
+
+        if (req.user.role.toUpperCase() !== 'STAF') {
             const dosen = await prisma.dosen.findUnique({
                 where: { userId: req.user.id }
             });
-            
-            if (!dosen) {
-                return res.status(404).json({ message: "Dosen profile not found" });
-            }
+            if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
+            whereClause.dosenId = dosen.id;
+        }
 
-            pengajuanList = await prisma.pengajuanJudul.findMany({
-                where: { 
-                    dosenId: dosen.id,
-                    status: 'APPROVED'
-                },
-                include: {
-                    mahasiswa: {
-                        include: {
-                            bimbingan: {
-                                orderBy: { tanggal: 'desc' },
-                            }
+        // Add Search functionality natively to Prisma query
+        if (search) {
+            whereClause.mahasiswa = {
+                OR: [
+                    { nama: { contains: search, mode: 'insensitive' } },
+                    { nim: { contains: search, mode: 'insensitive' } }
+                ]
+            };
+        }
+
+        let pengajuanList = await prisma.pengajuanJudul.findMany({
+            where: whereClause,
+            include: {
+                dosen: req.user.role.toUpperCase() === 'STAF', // Only include dosen if STAF
+                mahasiswa: {
+                    include: {
+                        bimbingan: {
+                            orderBy: { tanggal: 'desc' },
                         }
                     }
                 }
+            }
+        });
+
+        // Backend Status Filtering
+        if (status && status !== "Semua") {
+            pengajuanList = pengajuanList.filter(item => {
+                const activeTask = item.mahasiswa?.bimbingan?.[0];
+                const noActiveTarget = !activeTask || activeTask.status === 'APPROVED';
+                
+                if (status === "Belum Ditargetkan") return noActiveTarget;
+                if (status === "Perlu Revisi") return activeTask?.status === 'REVISION';
+                if (status === "Menunggu Reviu") return activeTask?.status === 'SUBMITTED';
+                if (status === "Sedang Dikerjakan") return activeTask?.status === 'ASSIGNED';
+                return true;
             });
         }
+
+        // Priority Sorting Logic
+        pengajuanList.sort((a, b) => {
+            const aTask = a.mahasiswa?.bimbingan?.[0];
+            const bTask = b.mahasiswa?.bimbingan?.[0];
+            
+            const getPriority = (task) => {
+                if (!task || task.status === 'APPROVED') return 1; // Priority 1: Belum ditargetkan
+                if (task.status === 'SUBMITTED') return 2; // Priority 2: Menunggu Reviu Dosen
+                if (task.status === 'REVISION') return 3; // Priority 3: Perlu Revisi Mahasiswa
+                if (task.status === 'ASSIGNED') return 4; // Priority 4: Sedang Dikerjakan Mahasiswa
+                return 5;
+            };
+
+            const pA = getPriority(aTask);
+            const pB = getPriority(bTask);
+
+            if (pA !== pB) return pA - pB;
+
+            // Secondary sort: Latest approved PengajuanJudul (tanggal)
+            const dateA = new Date(a.tanggal || 0).getTime();
+            const dateB = new Date(b.tanggal || 0).getTime();
+            return dateB - dateA; // Descending order (newest first)
+        });
 
         res.json(pengajuanList);
     } catch (error) {
