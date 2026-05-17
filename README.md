@@ -12,9 +12,9 @@ Metode ini otomatis menyiapkan Node.js, PostgreSQL, Redis, dan melakukan sinkron
 1.  **Siapkan `.env` di root folder:**
     Pastikan kredensial di `.env` Anda sudah benar (akan dibaca otomatis oleh Docker). Contoh `.env`:
     ```env
-    DATABASE_URL="postgresql://postgres:DhandiAdam@localhost:5432/Skripsi?schema=public"
+    DATABASE_URL="postgresql://postgres:password_db_anda@localhost:5432/Skripsi?schema=public"
     JWT_SECRET="your-secret-key-here"
-    GEMINI_API_KEY="AIzaSy..."
+    GEMINI_API_KEY="key anda"
     ```
 2.  **Jalankan Docker Compose:**
     Ketik perintah berikut di terminal backend:
