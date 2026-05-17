@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: skripsi-backend
+    ports:
+      - "5002:5002"
+    environment:
+      - DATABASE_URL=postgresql://postgres:DhandiAdam@db:5432/Skripsi?schema=public
+      - JWT_SECRET=${JWT_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - PORT=5002
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./uploads:/app/uploads
+      # Comment baris di bawah ini di production, aktifkan untuk development (hot-reload)
+      - ./src:/app/src
+    depends_on:
+      - db
+      - redis
+    command: sh -c "npx prisma db push && npm run seed && npm run dev"
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: skripsi-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: DhandiAdam
+      POSTGRES_DB: Skripsi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: skripsi-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
