@@ -223,10 +223,10 @@ Semua REST API menggunakan Base URL: `http://localhost:5002/api`
 | **GET** | `/api/download` | Mahasiswa, Dosen, Staf | Mengambil list seluruh berkas materi | - |
 | **GET** | `/api/download/:id` | Mahasiswa, Dosen, Staf | Mengambil detail berkas tertentu | - |
 | **GET** | `/api/download/:id/download` | Mahasiswa, Dosen, Staf | Trigger download berkas (Sistem File Lokal) | - |
-| **POST** | `/api/download` | Staf | Menyimpan metadata berkas baru | `{ "title": "...", "description": "...", "fileUrl": "..." }` |
-| **POST** | `/api/download/upload` | Staf | Upload berkas fisik ke server (Multipart) | `FormData: { file: [File] }` |
-| **PUT** | `/api/download/:id` | Staf | Mengupdate judul/deskripsi berkas materi | `{ "title": "...", "description": "..." }` |
-| **DELETE** | `/api/download/:id` | Staf | Menghapus berkas materi secara permanen | - |
+| **POST** | `/api/download` | Dosen, Staf, Admin | Menyimpan metadata berkas baru | `{ "title": "...", "description": "...", "fileUrl": "..." }` |
+| **POST** | `/api/download/upload` | Dosen, Staf, Admin | Upload berkas fisik ke server (Multipart) | `FormData: { file: [File] }` |
+| **PUT** | `/api/download/:id` | Dosen, Staf, Admin | Mengupdate judul/deskripsi berkas materi | `{ "title": "...", "description": "..." }` |
+| **DELETE** | `/api/download/:id` | Dosen, Staf, Admin | Menghapus berkas materi secara permanen | - |
 
 ---
 

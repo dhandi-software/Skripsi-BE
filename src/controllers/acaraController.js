@@ -45,6 +45,7 @@ const getAcara = async (req, res) => {
                                     username: true,
                                     role: true,
                                     id: true,
+                                    photo: true,
                                     mahasiswa: { select: { nama: true } },
                                     dosen: { select: { nama: true } }
                                 }
@@ -97,6 +98,7 @@ const getAcaraById = async (req, res) => {
                                 username: true,
                                 role: true,
                                 id: true,
+                                photo: true,
                                 mahasiswa: { select: { nama: true } },
                                 dosen: { select: { nama: true } }
                             }
@@ -197,6 +199,7 @@ const addComment = async (req, res) => {
                         username: true,
                         role: true,
                         id: true,
+                        photo: true,
                         mahasiswa: { select: { nama: true } },
                         dosen: { select: { nama: true } }
                     }

@@ -185,7 +185,8 @@ exports.updatePengajuanStatus = async (req, res) => {
             where: { id: parseInt(id) },
             data: { 
                 status,
-                remarks: remarks || null  // simpan catatan dosen
+                remarks: remarks || null,  // simpan catatan dosen
+                tanggal: new Date()        // update tanggal to the approval/status update date!
             },
             include: { mahasiswa: { include: { user: true } } }
         });
