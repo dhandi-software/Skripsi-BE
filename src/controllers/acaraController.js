@@ -45,6 +45,7 @@ const getAcara = async (req, res) => {
                                     username: true,
                                     role: true,
                                     id: true,
+                                    photo: true,
                                     mahasiswa: { select: { nama: true } },
                                     dosen: { select: { nama: true } }
                                 }
@@ -83,6 +84,42 @@ const getAcara = async (req, res) => {
     }
 };
 
+const getAcaraById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const acara = await prisma.acara.findUnique({
+            where: { id: parseInt(id) },
+            include: {
+                dosen: true,
+                comments: {
+                    include: {
+                        user: {
+                            select: {
+                                username: true,
+                                role: true,
+                                id: true,
+                                photo: true,
+                                mahasiswa: { select: { nama: true } },
+                                dosen: { select: { nama: true } }
+                            }
+                        }
+                    },
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
+            }
+        });
+
+        if (!acara) return res.status(404).json({ message: "Postingan tidak ditemukan" });
+        
+        res.json(acara);
+    } catch (error) {
+        console.error("Get Acara By ID Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 const createAcara = async (req, res) => {
     try {
         const { title, content, type } = req.body;
@@ -100,6 +137,17 @@ const createAcara = async (req, res) => {
                 dosenId: dosen.id
             }
         });
+
+        // Emit real-time notification
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('new_acara', { 
+                id: acara.id, 
+                title: acara.title, 
+                type: acara.type 
+            });
+        }
+
         res.status(201).json(acara);
     } catch (error) {
         console.error("Create Acara Error:", error);
@@ -151,6 +199,7 @@ const addComment = async (req, res) => {
                         username: true,
                         role: true,
                         id: true,
+                        photo: true,
                         mahasiswa: { select: { nama: true } },
                         dosen: { select: { nama: true } }
                     }
@@ -201,12 +250,19 @@ const getUnreadCount = async (req, res) => {
         if (!mahasiswa) return res.json({ count: 0 });
 
         // Count all Acara that don't have a read status for this mahasiswa
-        const allAcaraCount = await prisma.acara.count();
-        const readAcaraCount = await prisma.acaraReadStatus.count({
-            where: { mahasiswaId: mahasiswa.id }
+        const unreadCount = await prisma.acara.count({
+            where: {
+                NOT: {
+                    readBy: {
+                        some: {
+                            mahasiswaId: mahasiswa.id
+                        }
+                    }
+                }
+            }
         });
 
-        res.json({ count: Math.max(0, allAcaraCount - readAcaraCount) });
+        res.json({ count: unreadCount });
     } catch (error) {
         console.error("Get Unread Count Error:", error);
         res.status(500).json({ error: error.message });
@@ -242,6 +298,13 @@ const markAsRead = async (req, res) => {
             }
         });
 
+        // Emit real-time sync for the specific user
+        const io = req.app.get('io');
+        if (io) {
+            const uid = parseInt(userId);
+            io.to(`user_${uid}`).emit('acara_read', { acaraId: parseInt(id) });
+        }
+
         res.json({ success: true });
     } catch (error) {
         console.error("Mark Read Error:", error);
@@ -251,6 +314,7 @@ const markAsRead = async (req, res) => {
 
 module.exports = {
     getAcara,
+    getAcaraById,
     createAcara,
     updateAcara,
     deleteAcara,

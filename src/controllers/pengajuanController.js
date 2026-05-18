@@ -23,6 +23,15 @@ exports.createPengajuan = async (req, res) => {
              console.error("Invalid dosenId:", dosenId);
              return res.status(400).json({ message: "Invalid or missing Dosen ID" });
         }
+
+        // Verify if selected dosen is Dosen Reguler (Viewer Only)
+        const checkDosen = await prisma.dosen.findUnique({
+            where: { id: parseInt(dosenId) }
+        });
+
+        if (checkDosen && checkDosen.jabatan && checkDosen.jabatan.toLowerCase().includes("reguler")) {
+            return res.status(403).json({ message: "Dosen Reguler tidak dapat dipilih sebagai pembimbing." });
+        }
         
         // Find Mahasiswa profile
         const mahasiswa = await prisma.mahasiswa.findUnique({
@@ -88,6 +97,14 @@ exports.createPengajuan = async (req, res) => {
 exports.getDosenList = async (req, res) => {
     try {
         const dosenList = await prisma.dosen.findMany({
+            where: {
+                NOT: {
+                    jabatan: {
+                        contains: 'Reguler',
+                        mode: 'insensitive'
+                    }
+                }
+            },
             select: {
                 id: true,
                 nama: true,
@@ -126,6 +143,7 @@ exports.getMahasiswaProfile = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 }
+
 exports.getPengajuanByDosen = async (req, res) => {
     try {
         // Find Dosen profile first
@@ -167,7 +185,8 @@ exports.updatePengajuanStatus = async (req, res) => {
             where: { id: parseInt(id) },
             data: { 
                 status,
-                remarks: remarks || null  // simpan catatan dosen
+                remarks: remarks || null,  // simpan catatan dosen
+                tanggal: new Date()        // update tanggal to the approval/status update date!
             },
             include: { mahasiswa: { include: { user: true } } }
         });
@@ -218,3 +237,218 @@ exports.getPengajuanById = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+exports.updateMahasiswaProfile = async (req, res) => {
+    try {
+        const { nama } = req.body;
+        const file = req.file;
+
+        const updateData = {};
+        if (file) {
+            updateData.photo = `/uploads/profile/${file.filename}`;
+        }
+
+        // Update User photo
+        const updatedUser = await prisma.user.update({
+            where: { id: req.user.id },
+            data: updateData
+        });
+
+        // Update Mahasiswa nama if provided
+        if (nama) {
+            await prisma.mahasiswa.update({
+                where: { userId: req.user.id },
+                data: { nama }
+            });
+        }
+
+        res.json({ message: "Profile updated successfully", data: updatedUser });
+    } catch (error) {
+        console.error("Update Profile Error:", error);
+        res.status(500).json({ 
+            message: "Internal server error: " + error.message,
+            error: error
+        });
+    }
+};
+exports.getDosenProfile = async (req, res) => {
+    try {
+        const dosen = await prisma.dosen.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+        
+        if (!dosen) {
+             return res.status(404).json({ message: "Dosen profile not found" });
+        }
+        res.json(dosen);
+    } catch (error) {
+        console.error("Get Dosen Profile Error:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.updateDosenProfile = async (req, res) => {
+    try {
+        const { nama, jabatan } = req.body;
+        const file = req.file;
+
+        const updateData = {};
+        if (file) {
+            updateData.photo = `/uploads/profile/${file.filename}`;
+        }
+
+        // Update User photo
+        if (Object.keys(updateData).length > 0) {
+            await prisma.user.update({
+                where: { id: req.user.id },
+                data: updateData
+            });
+        }
+
+        // Update Dosen info if provided
+        const dosenUpdate = {};
+        if (nama) dosenUpdate.nama = nama;
+        if (jabatan) dosenUpdate.jabatan = jabatan;
+
+        if (Object.keys(dosenUpdate).length > 0) {
+            await prisma.dosen.update({
+                where: { userId: req.user.id },
+                data: dosenUpdate
+            });
+        }
+
+        // Get fresh data
+        const freshProfile = await prisma.dosen.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+
+        res.json({ message: "Profile updated successfully", data: freshProfile });
+    } catch (error) {
+        console.error("Update Dosen Profile Error:", error);
+        res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+};
+
+exports.cancelPengajuan = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // 1. Find Mahasiswa profile
+        const mahasiswa = await prisma.mahasiswa.findUnique({
+            where: { userId: req.user.id }
+        });
+
+        if (!mahasiswa) {
+            return res.status(404).json({ message: "Mahasiswa profile not found" });
+        }
+
+        // 2. Find the proposal
+        const pengajuan = await prisma.pengajuanJudul.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!pengajuan) {
+            return res.status(404).json({ message: "Pengajuan not found" });
+        }
+
+        // 3. Verify ownership
+        if (pengajuan.mahasiswaId !== mahasiswa.id) {
+            return res.status(403).json({ message: "You are not authorized to cancel this proposal" });
+        }
+
+        // 4. Verify status (Allow cancellation only if PENDING or REVISION)
+        // If it's REVISION, the student might want to just delete it and start over.
+        if (pengajuan.status !== 'PENDING' && pengajuan.status !== 'REVISION') {
+            return res.status(400).json({ message: "Hanya pengajuan dengan status PENDING atau REVISION yang dapat dibatalkan" });
+        }
+
+        // 5. Delete the proposal
+        await prisma.pengajuanJudul.delete({
+            where: { id: parseInt(id) }
+        });
+
+        res.json({ message: "Pengajuan berhasil dibatalkan" });
+    } catch (error) {
+        console.error("Cancel Pengajuan Error:", error);
+        res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+};
+
+exports.getStafProfile = async (req, res) => {
+    try {
+        const staf = await prisma.staf.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+        
+        if (!staf) {
+             return res.status(404).json({ message: "Staf profile not found" });
+        }
+
+        // Flatten data for frontend
+        const profile = {
+            id: staf.user.id,
+            nama: staf.nama,
+            email: staf.user.email,
+            role: staf.user.role,
+            photo: staf.user.photo
+        };
+
+        res.json(profile);
+    } catch (error) {
+        console.error("Get Staf Profile Error:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+exports.updateStafProfile = async (req, res) => {
+    try {
+        const { nama, email } = req.body;
+        const file = req.file;
+
+        await prisma.$transaction(async (tx) => {
+            // 1. Update User table (email and photo)
+            const userUpdate = {};
+            if (email) userUpdate.email = email;
+            if (file) userUpdate.photo = `/uploads/profile/${file.filename}`;
+
+            if (Object.keys(userUpdate).length > 0) {
+                await tx.user.update({
+                    where: { id: req.user.id },
+                    data: userUpdate
+                });
+            }
+
+            // 2. Update Staf table (nama)
+            if (nama) {
+                await tx.staf.update({
+                    where: { userId: req.user.id },
+                    data: { nama }
+                });
+            }
+        });
+
+        // Fetch fresh data
+        const freshStaf = await prisma.staf.findUnique({
+            where: { userId: req.user.id },
+            include: { user: true }
+        });
+
+        res.json({ 
+            message: "Profile updated successfully", 
+            data: {
+                id: freshStaf.user.id,
+                nama: freshStaf.nama,
+                email: freshStaf.user.email,
+                role: freshStaf.user.role,
+                photo: freshStaf.user.photo
+            }
+        });
+    } catch (error) {
+        console.error("Update Staf Profile Error:", error);
+        res.status(500).json({ message: "Internal server error: " + error.message });
+    }
+};
+

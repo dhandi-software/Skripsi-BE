@@ -117,6 +117,130 @@ Documentation for **Skripsi-Be**, serving as the backend for the Universitas Pan
 
 ---
 
+## 🎓 Sidang (Defense Scheduling)
+**Prefix**: `/sidang`
+
+### Apply for Sidang
+- **Endpoint**: `POST /apply`
+- **Description**: Submit an application for a thesis defense.
+- **Roles**: `mahasiswa`, `dosen`, `staf`
+- **Behavior**: 
+  - If `staf` applies, the supervisor (pembimbing) is automatically looked up from the student's approved thesis title.
+  - Status will be `MENUNGGU_PERSETUJUAN_PEMBIMBING`.
+- **Body**:
+  ```json
+  {
+    "mahasiswaId": 1,
+    "judul": "Analisis Sistem Keamanan",
+    "tanggalSidang": "2026-05-10",
+    "waktuSidang": "09:00",
+    "lokasi": "Ruang Sidang Lt. 3",
+    "catatan": "Catatan tambahan"
+  }
+  ```
+
+### Update Schedule (Staff/Prodi)
+- **Endpoint**: `PUT /:id/schedule`
+- **Description**: Set or update the exam schedule details.
+- **Roles**: `staf`, `admin`
+- **Body**:
+  ```json
+  {
+    "tanggalSidang": "2026-05-15",
+    "waktuSidang": "10:00",
+    "lokasi": "Ruang Zoom / Aula",
+    "pengujiId": 2, 
+    "catatan": "Update jadwal terbaru"
+  }
+  ```
+
+### Approve by Supervisor (Pembimbing)
+- **Endpoint**: `PUT /:id/approve-pembimbing`
+- **Description**: Supervisor confirms they agree with the proposed schedule.
+- **Roles**: `dosen`
+
+### Approve by Prodi / Kaprodi
+- **Endpoint**: `PUT /:id/approve-prodi`
+- **Description**: Final approval for the defense schedule.
+- **Roles**: `staf`, `admin`
+
+### Get All Sidang
+- **Endpoint**: `GET /`
+- **Description**: Fetch all defense records with student and lecturer details included.
+
+---
+
+## 👮 Admin Management
+**Prefix**: `/admin`
+
+### Create Mahasiswa (Manual)
+- **Endpoint**: `POST /create-mahasiswa`
+- **Description**: Create a single student account.
+- **Body**:
+  ```json
+  {
+    "email": "student@univ.ac.id",
+    "password": "securepassword",
+    "nama": "Student Name",
+    "nim": "4522210147",
+    "jurusan": "Teknik Informatika",
+    "tahunMasuk": "2022"
+  }
+  ```
+
+### Create Mahasiswa (Massal / Import)
+- **Endpoint**: `POST /create-mahasiswa-massal`
+- **Description**: Bulk create student accounts from an array (usually from Excel parser).
+- **Body**:
+  ```json
+  {
+    "users": [
+      {
+        "email": "student1@univ.ac.id",
+        "password": "password123",
+        "nama": "Student One",
+        "nim": "4522210001",
+        "jurusan": "Teknik Informatika",
+        "tahunMasuk": "2022"
+      },
+      ...
+    ]
+  }
+  ```
+
+### Create Dosen
+- **Endpoint**: `POST /create-dosen`
+- **Description**: Create a single lecturer account.
+- **Body**:
+  ```json
+  {
+    "email": "lecturer@univ.ac.id",
+    "password": "securepassword",
+    "nama": "Lecturer Name",
+    "nidn": "0312098801",
+    "jabatan": "Dosen Pembimbing"
+  }
+  ```
+
+### Get User List by Role
+- **Endpoint**: `GET /users-role?role=mahasiswa`
+- **Description**: Fetch all accounts belonging to a specific role.
+
+### Update User
+- **Endpoint**: `PUT /users/:id`
+- **Description**: Update profile and/or credentials of any user.
+- **Body**: Supports all fields like `email`, `name`, `password` (hashed if changed), `nim`, `nidn`, etc.
+
+### Delete User
+- **Endpoint**: `DELETE /users/:id`
+- **Description**: Permanently remove a user account.
+
+### Dashboard Stats
+- **Endpoint**: `GET /dashboard-stats`
+- **Description**: Aggregate counts for the admin dashboard.
+
+---
+
 ## 🔌 Socket.IO Events
 
 ### Client -> Server

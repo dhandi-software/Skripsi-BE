@@ -7,10 +7,17 @@ module.exports = (io) => {
     socket.on('join', async (userId) => {
       const uid = parseInt(userId);
       socket.join(`user_${uid}`);
-      socket.join('public_room');
       
-      // Join all group rooms the user is a member of
       try {
+          const user = await prisma.user.findUnique({ where: { id: uid } });
+          if (user && !user.isBannedFromPublic) {
+              socket.join('public_room');
+              console.log(`User ${userId} joined public_room`);
+          } else {
+              console.log(`User ${userId} is banned from public_room`);
+          }
+
+          // Join all group rooms the user is a member of
           const userRooms = await prisma.chatRoom.findMany({
               where: { members: { some: { userId: uid } } }
           });
@@ -19,21 +26,32 @@ module.exports = (io) => {
           });
           console.log(`User ${uid} joined ${userRooms.length} group rooms.`);
       } catch (err) {
-          console.error("Error joining group rooms on socket:", err);
+          console.error("Error joining rooms on socket:", err);
       }
       
-      console.log(`User ${userId} joined room user_${userId} and public_room`);
+      console.log(`User ${userId} joined room user_${userId}`);
     });
 
     socket.on('send_message', async (data) => {
-      const { senderId, receiverId, roomId, content, attachmentUrl, attachmentType, isPublic, replyToId } = data;
+      const { senderId, receiverId, roomId, content, attachmentUrl, attachmentType, fileName, isPublic, replyToId } = data;
 
       try {
+        const sid = parseInt(senderId);
+        
+        // Check if user is banned from public chat
+        if (isPublic) {
+            const user = await prisma.user.findUnique({ where: { id: sid } });
+            if (user?.isBannedFromPublic) {
+                socket.emit('error', { message: 'Anda telah dikeluarkan dari Ruang Publik oleh Admin.' });
+                return;
+            }
+        }
         let messageData = {
             senderId: parseInt(senderId),
             content,
             attachmentUrl,
             attachmentType,
+            fileName,
             isPublic: !!isPublic,
             replyToId: replyToId ? parseInt(replyToId) : null
         };
@@ -87,7 +105,8 @@ module.exports = (io) => {
         }
 
         if (isPublic) {
-            io.to('public_room').emit('receive_message', message);
+            socket.to('public_room').emit('receive_message', message);
+            socket.emit('message_sent', message);
         } else if (roomId) {
             const rid = parseInt(roomId);
             // Broadcast to the group room (reaches all online members in that room)

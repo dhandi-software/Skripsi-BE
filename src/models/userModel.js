@@ -2,11 +2,14 @@ const prisma = require('../prisma');
 const bcrypt = require('bcrypt');
 
 const findUserByIdentifier = async (identifier) => {
+    if (!identifier) return null;
+    
     return await prisma.user.findFirst({
         where: {
             OR: [
                 { username: identifier },
-                { email: identifier }
+                { email: identifier },
+                { username: `D-${identifier}` } // Try with Dosen prefix for NIDN-based login
             ]
         },
         include: {
