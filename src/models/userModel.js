@@ -14,7 +14,8 @@ const findUserByIdentifier = async (identifier) => {
         },
         include: {
             mahasiswa: true,
-            dosen: true
+            dosen: true,
+            staf: true
         }
     });
 };

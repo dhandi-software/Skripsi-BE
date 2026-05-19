@@ -17,12 +17,7 @@ async function main() {
       username: 'adminunivpancasila',
       email: 'adminunivpancasila@univ.ac.id',
       password: passwordHash,
-      role: 'admin',
-      staf: {
-        create: {
-          nama: 'Administrator Universitas Pancasila'
-        }
-      }
+      role: 'admin'
     },
   });
 

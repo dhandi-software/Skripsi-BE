@@ -44,7 +44,12 @@ const login = async (req, res) => {
         });
 
         // 4. Return Response
-        const profileName = user.mahasiswa?.nama || user.dosen?.nama || user.username;
+        let profileName = user.username;
+        if (user.role === 'admin') {
+            profileName = 'Administrator';
+        } else {
+            profileName = user.mahasiswa?.nama || user.dosen?.nama || user.staf?.nama || user.username;
+        }
 
         return res.status(200).json({
             message: 'Login successful',
