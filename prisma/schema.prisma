@@ -34,6 +34,7 @@ model User {
   chatMemberships ChatRoomMember[]
   acaraComments   AcaraComment[]
   acaras          Acara[]
+  downloads       Download[]
 }
 
 model Mahasiswa {
@@ -74,6 +75,7 @@ model Dosen {
 model Download {
   id          Int      @id @default(autoincrement())
   dosenId     Int
+  userId      Int?
   title       String
   description String?
   fileUrl     String
@@ -82,6 +84,7 @@ model Download {
   updatedAt   DateTime @updatedAt
 
   dosen       Dosen    @relation(fields: [dosenId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id])
 }
 
 model Staf {

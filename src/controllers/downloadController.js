@@ -18,6 +18,16 @@ const getDownloads = async (req, res) => {
                         select: {
                             nama: true
                         }
+                    },
+                    user: {
+                        select: {
+                            username: true,
+                            role: true,
+                            id: true,
+                            photo: true,
+                            mahasiswa: { select: { nama: true } },
+                            dosen: { select: { nama: true } }
+                        }
                     }
                 },
                 orderBy: {
@@ -52,6 +62,16 @@ const getDownloadById = async (req, res) => {
                     select: {
                         nama: true
                     }
+                },
+                user: {
+                    select: {
+                        username: true,
+                        role: true,
+                        id: true,
+                        photo: true,
+                        mahasiswa: { select: { nama: true } },
+                        dosen: { select: { nama: true } }
+                    }
                 }
             }
         });
@@ -68,9 +88,13 @@ const getDownloadById = async (req, res) => {
 const createDownload = async (req, res) => {
     try {
         const { title, description, fileUrl, fileType } = req.body;
-        const dosen = await prisma.dosen.findUnique({
+        let dosen = await prisma.dosen.findUnique({
             where: { userId: parseInt(req.user.id) }
         });
+
+        if (!dosen && (req.user.role.toUpperCase() === 'ADMIN' || req.user.role.toUpperCase() === 'STAF')) {
+            dosen = await prisma.dosen.findFirst();
+        }
 
         if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
 
@@ -79,7 +103,8 @@ const createDownload = async (req, res) => {
                 title,
                 fileUrl,
                 fileType,
-                dosenId: dosen.id
+                dosenId: dosen.id,
+                userId: parseInt(req.user.id)
             }
         });
 

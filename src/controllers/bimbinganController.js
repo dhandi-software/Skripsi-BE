@@ -139,29 +139,36 @@ const getLaporanAkhirDosen = async (req, res) => {
             return res.status(404).json({ message: "Dosen profile not found" });
         }
 
-        // Get all unique students supervised by this dosen via Bimbingan
-        const bimbinganList = await prisma.bimbingan.findMany({
-            where: { dosenId: dosen.id },
+        // Get all unique students supervised by this dosen via approved title proposals
+        const pengajuanList = await prisma.pengajuanJudul.findMany({
+            where: { 
+                dosenId: dosen.id,
+                status: 'APPROVED'
+            },
             include: {
                 mahasiswa: {
                     include: {
                         pengajuanJudul: { where: { dosenId: dosen.id } },
-                        penilaian: { where: { dosenId: dosen.id } }
+                        penilaian: { where: { dosenId: dosen.id } },
+                        bimbingan: { where: { dosenId: dosen.id } },
+                        logbooks: true,
+                        logbookInfo: true
                     }
                 }
             }
         });
 
         const mahasiswaMap = new Map();
-        bimbinganList.forEach(b => {
-            if (!mahasiswaMap.has(b.mahasiswaId)) {
-                mahasiswaMap.set(b.mahasiswaId, {
-                    mahasiswa: b.mahasiswa,
-                    bimbingan: [],
-                    penilaian: b.mahasiswa.penilaian
+        pengajuanList.forEach(p => {
+            const mhs = p.mahasiswa;
+            if (!mhs) return;
+            if (!mahasiswaMap.has(mhs.id)) {
+                mahasiswaMap.set(mhs.id, {
+                    mahasiswa: mhs,
+                    bimbingan: mhs.bimbingan || [],
+                    penilaian: mhs.penilaian || []
                 });
             }
-            mahasiswaMap.get(b.mahasiswaId).bimbingan.push(b);
         });
 
         const laporan = Array.from(mahasiswaMap.values()).map(item => {
@@ -187,6 +194,8 @@ const getLaporanAkhirDosen = async (req, res) => {
             }
 
             const pengajuan = mhs.pengajuanJudul && mhs.pengajuanJudul.length > 0 ? mhs.pengajuanJudul[0] : null;
+            const logbooks = mhs.logbooks || [];
+            const logbooksApproved = logbooks.filter(l => l.pembimbingParaf !== null && l.pembimbingParaf !== "");
 
             return {
                 id: mhs.id,
@@ -195,9 +204,24 @@ const getLaporanAkhirDosen = async (req, res) => {
                 judulSkripsi: pengajuan ? (pengajuan.judul || latestBimbingan?.topik || "-") : (latestBimbingan ? latestBimbingan.topik : "-"),
                 totalBimbinganSelesai: bimbinganApproved.length,
                 totalBimbingan: bimbinganList.length,
-                nilaiAkhir: penilaian ? penilaian.nilai : null,
+                totalLogbook: logbooks.length,
+                totalLogbookApproved: logbooksApproved.length,
+                p1_k1: penilaian ? penilaian.p1_k1 : null,
+                p1_k2: penilaian ? penilaian.p1_k2 : null,
+                p1_k3: penilaian ? penilaian.p1_k3 : null,
+                p1_total: penilaian ? penilaian.p1_total : null,
+                p1_nama: penilaian ? penilaian.p1_nama : null,
+                p2_k1: penilaian ? penilaian.p2_k1 : null,
+                p2_k2: penilaian ? penilaian.p2_k2 : null,
+                p2_k3: penilaian ? penilaian.p2_k3 : null,
+                p2_total: penilaian ? penilaian.p2_total : null,
+                p2_nama: penilaian ? penilaian.p2_nama : null,
+                nilaiAkhir: penilaian ? penilaian.nilaiRataRata : null,
                 keteranganPenilaian: penilaian ? penilaian.keterangan : null,
-                statusProgress
+                statusProgress,
+                logbookInfo: mhs.logbookInfo || null,
+                logbooks: logbooks,
+                bimbingans: bimbinganList
             };
         });
 
