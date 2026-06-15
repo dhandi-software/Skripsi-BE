@@ -53,6 +53,7 @@ model Mahasiswa {
   acaraReadStatuses AcaraReadStatus[]
   logbooks       Logbook[]
   logbookInfo    LogbookInfo?
+  sanksiAdministrasi SanksiAdministrasi[]
 }
 
 
@@ -70,6 +71,7 @@ model Dosen {
   pengajuanJudul PengajuanJudul[]
   acara          Acara[]
   downloads      Download[]
+  sanksiAdministrasi SanksiAdministrasi[]
 }
 
 model Download {
@@ -312,3 +314,21 @@ model Logbook {
 
   mahasiswa Mahasiswa? @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
 }
+
+model SanksiAdministrasi {
+  id             Int      @id @default(autoincrement())
+  mahasiswaId    Int
+  dosenId        Int
+  nama           String
+  nim            String
+  hariSidang     String
+  tanggalSidang  String
+  hariTenggat    String
+  tanggalSurat   String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
+  dosen     Dosen     @relation(fields: [dosenId], references: [id], onDelete: Cascade)
+}
+

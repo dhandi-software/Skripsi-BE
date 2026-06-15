@@ -174,7 +174,10 @@ const getLaporanAkhirDosen = async (req, res) => {
         const laporan = Array.from(mahasiswaMap.values()).map(item => {
             const mhs = item.mahasiswa;
             const bimbinganList = item.bimbingan;
-            const bimbinganApproved = bimbinganList.filter(b => b.status === 'APPROVED');
+            const uniqueTopics = Array.from(new Set(bimbinganList.map(b => b.topik.trim().toLowerCase()).filter(Boolean)));
+            const approvedTopicsCount = uniqueTopics.filter(topic => 
+                bimbinganList.some(b => b.topik.trim().toLowerCase() === topic && b.status === 'APPROVED')
+            ).length;
             
             const latestBimbingan = bimbinganList.length > 0 
                 ? bimbinganList.sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal))[0] 
@@ -202,8 +205,8 @@ const getLaporanAkhirDosen = async (req, res) => {
                 nama: mhs.nama,
                 nim: mhs.nim,
                 judulSkripsi: pengajuan ? (pengajuan.judul || latestBimbingan?.topik || "-") : (latestBimbingan ? latestBimbingan.topik : "-"),
-                totalBimbinganSelesai: bimbinganApproved.length,
-                totalBimbingan: bimbinganList.length,
+                totalBimbinganSelesai: approvedTopicsCount,
+                totalBimbingan: uniqueTopics.length,
                 totalLogbook: logbooks.length,
                 totalLogbookApproved: logbooksApproved.length,
                 p1_k1: penilaian ? penilaian.p1_k1 : null,
