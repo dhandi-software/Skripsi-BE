@@ -7,8 +7,8 @@ const { authenticateToken } = require('../middleware/authMiddleware');
 router.use(authenticateToken);
 
 // Logbook Info (Header Perusahaan)
-router.get('/info', logbookController.getLogbookInfo);
-router.post('/info', logbookController.updateLogbookInfo);
+router.get('/info', logbookController.getTempatKP);
+router.post('/info', logbookController.updateTempatKP);
 
 // Logbook Entries
 router.get('/entries', logbookController.getLogbooks);

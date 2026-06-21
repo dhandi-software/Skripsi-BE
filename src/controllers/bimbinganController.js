@@ -152,7 +152,7 @@ const getLaporanAkhirDosen = async (req, res) => {
                         penilaian: { where: { dosenId: dosen.id } },
                         bimbingan: { where: { dosenId: dosen.id } },
                         logbooks: true,
-                        logbookInfo: true
+                        tempatKP: true
                     }
                 }
             }
@@ -222,7 +222,7 @@ const getLaporanAkhirDosen = async (req, res) => {
                 nilaiAkhir: penilaian ? penilaian.nilaiRataRata : null,
                 keteranganPenilaian: penilaian ? penilaian.keterangan : null,
                 statusProgress,
-                logbookInfo: mhs.logbookInfo || null,
+                tempatKP: mhs.tempatKP || null,
                 logbooks: logbooks,
                 bimbingans: bimbinganList
             };

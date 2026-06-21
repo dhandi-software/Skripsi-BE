@@ -240,13 +240,15 @@ exports.getPengajuanById = async (req, res) => {
 
 exports.updateMahasiswaProfile = async (req, res) => {
     try {
-        const { nama } = req.body;
+        const { nama, email, nomorTelepon } = req.body;
         const file = req.file;
 
         const updateData = {};
         if (file) {
             updateData.photo = `/uploads/profile/${file.filename}`;
         }
+        if (email) updateData.email = email;
+        if (nomorTelepon) updateData.nomorTelepon = nomorTelepon;
 
         // Update User photo
         const updatedUser = await prisma.user.update({
@@ -271,6 +273,58 @@ exports.updateMahasiswaProfile = async (req, res) => {
         });
     }
 };
+
+// ==========================================
+// PUBLIC PROFILE
+// ==========================================
+exports.getPublicProfile = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = await prisma.user.findUnique({
+            where: { id: parseInt(id) },
+            include: {
+                mahasiswa: true,
+                dosen: true,
+                staf: true
+            }
+        });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Return a clean public profile object
+        const publicProfile = {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            photo: user.photo,
+            nomorTelepon: user.nomorTelepon
+        };
+
+        if (user.mahasiswa) {
+            publicProfile.nama = user.mahasiswa.nama;
+            publicProfile.identitas = user.mahasiswa.nim; // NIM
+            publicProfile.subRole = user.mahasiswa.jurusan; // Jurusan
+        } else if (user.dosen) {
+            publicProfile.nama = user.dosen.nama;
+            publicProfile.identitas = user.dosen.nidn; // NIDN
+            publicProfile.subRole = user.dosen.jabatan; // Jabatan
+        } else if (user.staf) {
+            publicProfile.nama = user.staf.nama;
+            publicProfile.identitas = "-";
+            publicProfile.subRole = "Staf Administrasi";
+        }
+
+        res.json({
+            message: "Success fetching public profile",
+            data: publicProfile
+        });
+    } catch (error) {
+        console.error("Get Public Profile Error:", error);
+        res.status(500).json({ message: "Terjadi kesalahan server saat mengambil profil" });
+    }
+};
 exports.getDosenProfile = async (req, res) => {
     try {
         const dosen = await prisma.dosen.findUnique({
@@ -290,13 +344,15 @@ exports.getDosenProfile = async (req, res) => {
 
 exports.updateDosenProfile = async (req, res) => {
     try {
-        const { nama, jabatan } = req.body;
+        const { nama, jabatan, email, nomorTelepon } = req.body;
         const file = req.file;
 
         const updateData = {};
         if (file) {
             updateData.photo = `/uploads/profile/${file.filename}`;
         }
+        if (email) updateData.email = email;
+        if (nomorTelepon) updateData.nomorTelepon = nomorTelepon;
 
         // Update User photo
         if (Object.keys(updateData).length > 0) {
@@ -392,6 +448,7 @@ exports.getStafProfile = async (req, res) => {
             id: staf.user.id,
             nama: staf.nama,
             email: staf.user.email,
+            nomorTelepon: staf.user.nomorTelepon,
             role: staf.user.role,
             photo: staf.user.photo
         };
@@ -405,13 +462,14 @@ exports.getStafProfile = async (req, res) => {
 
 exports.updateStafProfile = async (req, res) => {
     try {
-        const { nama, email } = req.body;
+        const { nama, email, nomorTelepon } = req.body;
         const file = req.file;
 
         await prisma.$transaction(async (tx) => {
             // 1. Update User table (email and photo)
             const userUpdate = {};
             if (email) userUpdate.email = email;
+            if (nomorTelepon) userUpdate.nomorTelepon = nomorTelepon;
             if (file) userUpdate.photo = `/uploads/profile/${file.filename}`;
 
             if (Object.keys(userUpdate).length > 0) {
@@ -442,6 +500,7 @@ exports.updateStafProfile = async (req, res) => {
                 id: freshStaf.user.id,
                 nama: freshStaf.nama,
                 email: freshStaf.user.email,
+                nomorTelepon: freshStaf.user.nomorTelepon,
                 role: freshStaf.user.role,
                 photo: freshStaf.user.photo
             }

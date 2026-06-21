@@ -19,7 +19,7 @@ services:
     depends_on:
       - db
       - redis
-    command: sh -c "npx prisma db push && npm run seed && npm run dev"
+    command: sh -c "npx prisma db push --accept-data-loss && npm run seed && npm run dev"
     restart: unless-stopped
 
   db:

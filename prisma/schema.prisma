@@ -17,6 +17,7 @@ model User {
   password String
   role     String // MAHASISWA, DOSEN, KAPRODI, STAF
   email    String @unique
+  nomorTelepon String?
   photo    String?
   isBannedFromPublic Boolean @default(false)
 
@@ -52,7 +53,7 @@ model Mahasiswa {
   pengajuanJudul PengajuanJudul[]
   acaraReadStatuses AcaraReadStatus[]
   logbooks       Logbook[]
-  logbookInfo    LogbookInfo?
+  tempatKP           TempatKP?
   sanksiAdministrasi SanksiAdministrasi[]
 }
 
@@ -291,12 +292,13 @@ model AcaraReadStatus {
   @@unique([acaraId, mahasiswaId])
 }
 
-model LogbookInfo {
+model TempatKP {
   id               Int       @id @default(autoincrement())
   mahasiswaId      Int?      @unique
   namaPerusahaan   String?
   tlpFaxPerusahaan String?
   alamatPerusahaan String?   @db.Text
+  kontakPembimbing String?
   
   mahasiswa Mahasiswa? @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
 }

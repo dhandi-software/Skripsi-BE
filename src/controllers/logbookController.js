@@ -50,7 +50,7 @@ const getOwner = async (userId, targetMahasiswaId = null) => {
 };
 
 // Mengambil informasi header perusahaan untuk logbook
-exports.getLogbookInfo = async (req, res) => {
+exports.getTempatKP = async (req, res) => {
     try {
         const { mahasiswaId } = req.query;
         const { owner, type } = await getOwner(req.user.id, mahasiswaId);
@@ -67,22 +67,23 @@ exports.getLogbookInfo = async (req, res) => {
         
         if (type === 'dosen' && !mahasiswaId) {
              // Dosen's own logbook info
-             let info = await prisma.logbookInfo.findUnique({
+             let info = await prisma.tempatKP.findUnique({
                 where: { dosenId: owner.id }
             });
-            return res.json(info || { namaPerusahaan: "", tlpFaxPerusahaan: "", alamatPerusahaan: "" });
+            return res.json(info || { namaPerusahaan: "", tlpFaxPerusahaan: "", alamatPerusahaan: "", kontakPembimbing: "" });
         }
 
-        console.log("DEBUG getLogbookInfo:", { targetId, type });
-        // Use queryRaw for LogbookInfo as well
-        const infos = await prisma.$queryRaw`SELECT * FROM "LogbookInfo" WHERE "mahasiswaId" = ${targetId} LIMIT 1`;
+        console.log("DEBUG getTempatKP:", { targetId, type });
+        // Use queryRaw for TempatKP as well
+        const infos = await prisma.$queryRaw`SELECT * FROM "TempatKP" WHERE "mahasiswaId" = ${targetId} LIMIT 1`;
         let info = infos.length > 0 ? infos[0] : null;
 
         if (!info) {
             info = {
                 namaPerusahaan: "",
                 tlpFaxPerusahaan: "",
-                alamatPerusahaan: ""
+                alamatPerusahaan: "",
+                kontakPembimbing: ""
             };
         }
 
@@ -94,9 +95,9 @@ exports.getLogbookInfo = async (req, res) => {
 };
 
 // Memperbarui atau membuat informasi perusahaan baru
-exports.updateLogbookInfo = async (req, res) => {
+exports.updateTempatKP = async (req, res) => {
     try {
-        const { namaPerusahaan, tlpFaxPerusahaan, alamatPerusahaan } = req.body;
+        const { namaPerusahaan, tlpFaxPerusahaan, alamatPerusahaan, kontakPembimbing } = req.body;
         const { mahasiswaId } = req.query;
         const { owner, type } = await getOwner(req.user.id, mahasiswaId);
 
@@ -107,7 +108,8 @@ exports.updateLogbookInfo = async (req, res) => {
         const data = {
             namaPerusahaan,
             tlpFaxPerusahaan,
-            alamatPerusahaan
+            alamatPerusahaan,
+            kontakPembimbing
         };
 
         let whereClause;
@@ -124,7 +126,7 @@ exports.updateLogbookInfo = async (req, res) => {
             createData = { ...data, dosenId: owner.id };
         }
 
-        const info = await prisma.logbookInfo.upsert({
+        const info = await prisma.tempatKP.upsert({
             where: whereClause,
             update: data,
             create: createData
