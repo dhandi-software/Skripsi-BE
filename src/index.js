@@ -36,6 +36,7 @@ app.use('/api/download', require('./routes/downloadRoutes'));
 app.use('/api/logbook', require('./routes/logbookRoutes'));
 app.use('/api/chat-ai', require('./routes/chatAiRoutes'));
 app.use('/api/sanksi', require('./routes/sanksiRoutes'));
+app.use('/api/jadwal-kp', require('./routes/jadwalKpRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {

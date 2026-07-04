@@ -24,9 +24,9 @@ const getDownloads = async (req, res) => {
                             username: true,
                             role: true,
                             id: true,
-                            photo: true,
-                            mahasiswa: { select: { nama: true } },
-                            dosen: { select: { nama: true } }
+                            
+                            mahasiswa: { select: { nama: true, photo: true } },
+                            dosen: { select: { nama: true, photo: true } }
                         }
                     }
                 },
@@ -68,9 +68,9 @@ const getDownloadById = async (req, res) => {
                         username: true,
                         role: true,
                         id: true,
-                        photo: true,
-                        mahasiswa: { select: { nama: true } },
-                        dosen: { select: { nama: true } }
+                        
+                        mahasiswa: { select: { nama: true, photo: true } },
+                        dosen: { select: { nama: true, photo: true } }
                     }
                 }
             }
@@ -101,9 +101,10 @@ const createDownload = async (req, res) => {
         const download = await prisma.download.create({
             data: {
                 title,
+                description,
                 fileUrl,
                 fileType,
-                dosenId: dosen.id,
+                dosenNidn: dosen.nidn,
                 userId: parseInt(req.user.id)
             }
         });
@@ -122,7 +123,7 @@ const updateDownload = async (req, res) => {
         
         const download = await prisma.download.update({
             where: { id: parseInt(id) },
-            data: { title, fileUrl, fileType }
+            data: { title, description, fileUrl, fileType }
         });
         res.json(download);
     } catch (error) {

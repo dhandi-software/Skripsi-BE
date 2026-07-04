@@ -20,4 +20,13 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-module.exports = { authenticateToken };
+const authorizeRole = (roles) => {
+    return (req, res, next) => {
+        if (!req.user || !roles.map(r => r.toUpperCase()).includes(req.user.role.toUpperCase())) {
+            return res.status(403).json({ error: "Access denied." });
+        }
+        next();
+    };
+};
+
+module.exports = { authenticateToken, authorizeRole };

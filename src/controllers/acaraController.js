@@ -25,7 +25,7 @@ const getAcara = async (req, res) => {
             if (mahasiswa) {
                 // Fetch all IDs this student has read
                 const readStatuses = await prisma.acaraReadStatus.findMany({
-                    where: { mahasiswaId: mahasiswa.id },
+                    where: { mahasiswaNim: mahasiswa.nim },
                     select: { acaraId: true }
                 });
                 readAcaraIds = new Set(readStatuses.map(rs => rs.acaraId));
@@ -43,9 +43,9 @@ const getAcara = async (req, res) => {
                             username: true,
                             role: true,
                             id: true,
-                            photo: true,
-                            mahasiswa: { select: { nama: true } },
-                            dosen: { select: { nama: true } }
+                            
+                            mahasiswa: { select: { nama: true, photo: true } },
+                            dosen: { select: { nama: true, photo: true } }
                         }
                     },
                     comments: {
@@ -55,9 +55,9 @@ const getAcara = async (req, res) => {
                                     username: true,
                                     role: true,
                                     id: true,
-                                    photo: true,
-                                    mahasiswa: { select: { nama: true } },
-                                    dosen: { select: { nama: true } }
+                                    
+                                    mahasiswa: { select: { nama: true, photo: true } },
+                                    dosen: { select: { nama: true, photo: true } }
                                 }
                             }
                         },
@@ -106,9 +106,9 @@ const getAcaraById = async (req, res) => {
                         username: true,
                         role: true,
                         id: true,
-                        photo: true,
-                        mahasiswa: { select: { nama: true } },
-                        dosen: { select: { nama: true } }
+                        
+                        mahasiswa: { select: { nama: true, photo: true } },
+                        dosen: { select: { nama: true, photo: true } }
                     }
                 },
                 comments: {
@@ -118,9 +118,9 @@ const getAcaraById = async (req, res) => {
                                 username: true,
                                 role: true,
                                 id: true,
-                                photo: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+                                
+                                mahasiswa: { select: { nama: true, photo: true } },
+                                dosen: { select: { nama: true, photo: true } }
                             }
                         }
                     },
@@ -158,7 +158,7 @@ const createAcara = async (req, res) => {
                 title,
                 content,
                 type: type || "ASSIGNMENT",
-                dosenId: dosen.id,
+                dosenNidn: dosen.nidn,
                 userId: req.user.id
             }
         });
@@ -224,9 +224,9 @@ const addComment = async (req, res) => {
                         username: true,
                         role: true,
                         id: true,
-                        photo: true,
-                        mahasiswa: { select: { nama: true } },
-                        dosen: { select: { nama: true } }
+                        
+                        mahasiswa: { select: { nama: true, photo: true } },
+                        dosen: { select: { nama: true, photo: true } }
                     }
                 }
             }
@@ -280,7 +280,7 @@ const getUnreadCount = async (req, res) => {
                 NOT: {
                     readBy: {
                         some: {
-                            mahasiswaId: mahasiswa.id
+                            mahasiswaNim: mahasiswa.nim
                         }
                     }
                 }
@@ -311,15 +311,15 @@ const markAsRead = async (req, res) => {
 
         await prisma.acaraReadStatus.upsert({
             where: {
-                acaraId_mahasiswaId: {
+                acaraId_mahasiswaNim: {
                     acaraId: parseInt(id),
-                    mahasiswaId: mahasiswa.id
+                    mahasiswaNim: mahasiswa.nim
                 }
             },
             update: {},
             create: {
                 acaraId: parseInt(id),
-                mahasiswaId: mahasiswa.id
+                mahasiswaNim: mahasiswa.nim
             }
         });
 

@@ -20,15 +20,15 @@ const getOwner = async (userId, targetMahasiswaId = null) => {
             if (targetMahasiswaId) {
                 const bimbingan = await prisma.bimbingan.findFirst({
                     where: {
-                        mahasiswaId: parseInt(targetMahasiswaId),
-                        dosenId: dosen.id
+                        mahasiswaNim: targetMahasiswaId,
+                        dosenNidn: dosen.nidn
                     }
                 });
                 // Or check PengajuanJudul
                 const pengajuan = await prisma.pengajuanJudul.findFirst({
                     where: {
-                        mahasiswaId: parseInt(targetMahasiswaId),
-                        dosenId: dosen.id,
+                        mahasiswaNim: targetMahasiswaId,
+                        dosenNidn: dosen.nidn,
                         status: 'APPROVED'
                     }
                 });
@@ -38,7 +38,7 @@ const getOwner = async (userId, targetMahasiswaId = null) => {
                 }
 
                 owner = await prisma.mahasiswa.findUnique({
-                    where: { id: parseInt(targetMahasiswaId) }
+                    where: { nim: targetMahasiswaId }
                 });
             } else {
                 owner = dosen;
@@ -52,31 +52,25 @@ const getOwner = async (userId, targetMahasiswaId = null) => {
 // Mengambil informasi header perusahaan untuk logbook
 exports.getTempatKP = async (req, res) => {
     try {
-        const { mahasiswaId } = req.query;
+        const { mahasiswaId } = req.query; // mahasiswaId here means NIM
         const { owner, type } = await getOwner(req.user.id, mahasiswaId);
 
         if (!owner) {
             return res.status(type === 'unauthorized' ? 403 : 404).json({ message: "Profil tidak ditemukan atau tidak berwenang" });
         }
 
-        // If Dosen is viewing a student, use the student's ID
-        const finalOwnerId = (type === 'dosen' && mahasiswaId) ? parseInt(mahasiswaId) : owner.id;
-        // However, if Dosen is viewing their OWN logbook (from previous implementation), keep that too if desired.
-        // But the user said "dosen hanya bisa melihat logbook untuk mahasiswa", so maybe we only care about studentId here.
-        const targetId = (type === 'dosen' && mahasiswaId) ? parseInt(mahasiswaId) : (type === 'mahasiswa' ? owner.id : null);
+        const finalOwnerId = (type === 'dosen' && mahasiswaId) ? mahasiswaId : (type === 'mahasiswa' ? owner.nim : null);
         
-        if (type === 'dosen' && !mahasiswaId) {
-             // Dosen's own logbook info
-             let info = await prisma.tempatKP.findUnique({
-                where: { dosenId: owner.id }
-            });
-            return res.json(info || { namaPerusahaan: "", tlpFaxPerusahaan: "", alamatPerusahaan: "", kontakPembimbing: "" });
+        console.log("DEBUG getTempatKP:", { finalOwnerId, type });
+        // Use Prisma directly since it's cleaner than raw SQL for strings if possible.
+        let info = null;
+        if (finalOwnerId) {
+             const mhs = await prisma.mahasiswa.findUnique({
+                 where: { nim: finalOwnerId },
+                 include: { tempatKP: true }
+             });
+             info = mhs?.tempatKP || null;
         }
-
-        console.log("DEBUG getTempatKP:", { targetId, type });
-        // Use queryRaw for TempatKP as well
-        const infos = await prisma.$queryRaw`SELECT * FROM "TempatKP" WHERE "mahasiswaId" = ${targetId} LIMIT 1`;
-        let info = infos.length > 0 ? infos[0] : null;
 
         if (!info) {
             info = {
@@ -98,7 +92,7 @@ exports.getTempatKP = async (req, res) => {
 exports.updateTempatKP = async (req, res) => {
     try {
         const { namaPerusahaan, tlpFaxPerusahaan, alamatPerusahaan, kontakPembimbing } = req.body;
-        const { mahasiswaId } = req.query;
+        const { mahasiswaId } = req.query; // This is NIM
         const { owner, type } = await getOwner(req.user.id, mahasiswaId);
 
         if (!owner || type === 'unauthorized') {
@@ -112,25 +106,29 @@ exports.updateTempatKP = async (req, res) => {
             kontakPembimbing
         };
 
-        let whereClause;
-        let createData;
-
+        let targetNim;
         if (type === 'dosen' && mahasiswaId) {
-            whereClause = { mahasiswaId: parseInt(mahasiswaId) };
-            createData = { ...data, mahasiswaId: parseInt(mahasiswaId) };
+            targetNim = mahasiswaId;
         } else if (type === 'mahasiswa') {
-            whereClause = { mahasiswaId: owner.id };
-            createData = { ...data, mahasiswaId: owner.id };
+            targetNim = owner.nim;
         } else {
-            whereClause = { dosenId: owner.id };
-            createData = { ...data, dosenId: owner.id };
+             return res.status(403).json({ message: "Hanya untuk mahasiswa" }); // Dosen logbook info has been removed in schema changes.
         }
 
-        const info = await prisma.tempatKP.upsert({
-            where: whereClause,
-            update: data,
-            create: createData
+        const updatedMahasiswa = await prisma.mahasiswa.update({
+            where: { nim: targetNim },
+            data: {
+                tempatKP: {
+                    upsert: {
+                        create: data,
+                        update: data
+                    }
+                }
+            },
+            include: { tempatKP: true }
         });
+
+        const info = updatedMahasiswa.tempatKP;
 
         res.json({ message: "Info logbook diperbarui", data: info });
     } catch (error) {
@@ -149,26 +147,21 @@ exports.getLogbooks = async (req, res) => {
             return res.status(type === 'unauthorized' ? 403 : 404).json({ message: "Profil tidak ditemukan atau tidak berwenang" });
         }
 
-        let whereClause;
+        let targetNim;
         if (type === 'dosen' && mahasiswaId) {
-            whereClause = { mahasiswaId: parseInt(mahasiswaId) };
+            targetNim = mahasiswaId;
         } else if (type === 'mahasiswa') {
-            whereClause = { mahasiswaId: owner.id };
+            targetNim = owner.nim;
         } else {
-            whereClause = { dosenId: owner.id };
+            return res.json([]);
         }
 
-        console.log("DEBUG getLogbooks:", { type, mahasiswaId, ownerId: owner.id, whereClause });
-        // Use queryRaw to avoid issues with missing columns in Prisma Client (e.g. dosenId)
-        let logbooks;
-        if (type === 'dosen' && mahasiswaId) {
-            logbooks = await prisma.$queryRaw`SELECT * FROM "Logbook" WHERE "mahasiswaId" = ${parseInt(mahasiswaId)} ORDER BY "tanggalPukul" ASC`;
-        } else if (type === 'mahasiswa') {
-            logbooks = await prisma.$queryRaw`SELECT * FROM "Logbook" WHERE "mahasiswaId" = ${owner.id} ORDER BY "tanggalPukul" ASC`;
-        } else {
-            // This case should ideally use dosenId, but since it's missing in DB, we'll return empty or fix later
-            logbooks = [];
-        }
+        console.log("DEBUG getLogbooks:", { type, mahasiswaId, targetNim });
+        
+        let logbooks = await prisma.logbook.findMany({
+            where: { mahasiswaNim: targetNim },
+            orderBy: { tanggalPukul: 'asc' }
+        });
         
         console.log(`DEBUG getLogbooks found ${logbooks.length} entries`);
 
@@ -203,23 +196,15 @@ exports.syncLogbooks = async (req, res) => {
             return res.status(400).json({ message: "Entries harus berupa array" });
         }
 
-        let ownerField;
-        let ownerIdValue;
-
+        let targetNim;
         if (type === 'dosen' && mahasiswaId) {
-            ownerField = 'mahasiswaId';
-            ownerIdValue = parseInt(mahasiswaId);
+            targetNim = mahasiswaId;
         } else if (type === 'mahasiswa') {
-            ownerField = 'mahasiswaId';
-            ownerIdValue = owner.id;
+            targetNim = owner.nim;
         } else {
-            ownerField = 'dosenId';
-            ownerIdValue = owner.id;
+            return res.status(400).json({ message: "Dosen cannot have logbook." });
         }
 
-        // 1. Hapus entri yang tidak ada di dalam payload (berarti telah dihapus oleh user)
-        // Dosen should probably not be able to delete student entries, but let's see.
-        // If the user is a Dosen, maybe we should prevent deletion of student entries.
         if (type === 'mahasiswa' || (type === 'dosen' && !mahasiswaId)) {
             const existingIdsToKeep = entries
                 .filter(e => parseInt(e.id) < 1000000000000)
@@ -227,17 +212,15 @@ exports.syncLogbooks = async (req, res) => {
                 
             await prisma.logbook.deleteMany({
                 where: {
-                    [ownerField]: ownerIdValue,
+                    mahasiswaNim: targetNim,
                     id: { notIn: existingIdsToKeep }
                 }
             });
         }
 
-        // 2. Proses Simpan/Update setiap entri
         for (const entry of entries) {
             const dateObj = entry.tanggalPukul ? new Date(entry.tanggalPukul) : new Date();
             
-            // Basic data
             const data = {
                 tanggalPukul: dateObj,
                 uraian: entry.uraian || "",
@@ -246,21 +229,16 @@ exports.syncLogbooks = async (req, res) => {
                 catatan: entry.catatan || ""
             };
             
-            // If Dosen is syncing student logbook, they should only be allowed to update specific fields
-            // but for simplicity and "sama persis", I'll allow it for now unless I add field-level locking in backend.
-            
             if (parseInt(entry.id) > 1000000000000) {
-                // New entry - only students (or Dosen for their own logbook) should create
                 if (type === 'mahasiswa' || (type === 'dosen' && !mahasiswaId)) {
                     await prisma.logbook.create({
                         data: {
                             ...data,
-                            [ownerField]: ownerIdValue
+                            mahasiswaNim: targetNim
                         }
                     });
                 }
             } else {
-                // Update existing
                 await prisma.logbook.update({
                     where: { id: parseInt(entry.id) },
                     data: data
@@ -274,11 +252,12 @@ exports.syncLogbooks = async (req, res) => {
         res.status(500).json({ message: "Terjadi kesalahan pada server" });
     }
 };
+
 exports.getStudentProfile = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.params; // this is NIM
         const mahasiswa = await prisma.mahasiswa.findUnique({
-            where: { id: parseInt(id) },
+            where: { nim: id },
             include: { 
                 user: true,
                 pengajuanJudul: {

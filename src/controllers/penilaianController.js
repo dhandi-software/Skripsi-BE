@@ -18,7 +18,7 @@ const getPenilaianByMahasiswa = async (req, res) => {
     const { mahasiswaId } = req.params;
     try {
         const penilaian = await prisma.penilaian.findMany({
-            where: { mahasiswaId: parseInt(mahasiswaId) },
+            where: { mahasiswaNim: mahasiswaId },
             include: { dosen: true }
         });
         res.json(penilaian);
@@ -69,7 +69,7 @@ const getPenilaianByDosen = async (req, res) => {
             const supervised = await prisma.pengajuanJudul.findMany({
                 where: {
                     status: 'APPROVED',
-                    dosenId: dosen.id
+                    dosenNidn: dosen.nidn
                 },
                 include: {
                     mahasiswa: {
@@ -84,7 +84,7 @@ const getPenilaianByDosen = async (req, res) => {
 
             const examiningSidangs = await prisma.sidang.findMany({
                 where: {
-                    pengujiId: dosen.id
+                    pengujiNidn: dosen.nidn
                 },
                 include: {
                     mahasiswa: {
@@ -116,7 +116,7 @@ const getPenilaianByDosen = async (req, res) => {
 
             const combined = [...supervised];
             examining.forEach(ex => {
-                if (!combined.some(c => c.mahasiswaId === ex.mahasiswaId)) {
+                if (!combined.some(c => c.mahasiswaNim === ex.mahasiswaNim)) {
                     combined.push(ex);
                 }
             });
@@ -125,7 +125,7 @@ const getPenilaianByDosen = async (req, res) => {
         }
 
         const allDosens = await prisma.dosen.findMany({
-            select: { id: true, nama: true }
+            select: { nidn: true, nama: true }
         });
 
         const result = await Promise.all(pengajuanList.map(async p => {
@@ -134,26 +134,27 @@ const getPenilaianByDosen = async (req, res) => {
             const penilaian = mhs.penilaian && mhs.penilaian.length > 0 ? mhs.penilaian[0] : null;
             
             let pengujiNama = null;
-            if (activeSidang && activeSidang.pengujiId) {
-                const pDosen = allDosens.find(d => d.id === activeSidang.pengujiId);
+            if (activeSidang && activeSidang.pengujiNidn) {
+                const pDosen = allDosens.find(d => d.nidn === activeSidang.pengujiNidn);
                 if (pDosen) pengujiNama = pDosen.nama;
             }
 
             return {
-                mahasiswaId: mhs.id,
+                mahasiswaId: mhs.nim,
+                mahasiswaNim: mhs.nim,
                 nama: mhs.nama,
                 nim: mhs.nim,
-                jurusan: mhs.jurusan,
                 judulSkripsi: p.judul || "-",
                 penilaianId: penilaian ? penilaian.id : null,
                 
                 // Pembimbing Info
-                pembimbingId: p.dosenId,
+                pembimbingId: p.dosenNidn,
                 pembimbingNama: p.dosen ? p.dosen.nama : "-",
 
                 // Penguji Info
-                pengujiId: activeSidang ? activeSidang.pengujiId : null,
+                pengujiNidn: activeSidang ? activeSidang.pengujiNidn : null,
                 pengujiNama: pengujiNama,
+                suratTugasUrl: activeSidang ? activeSidang.suratTugasUrl : null,
 
                 // Detailed Components
                 p1_k1: penilaian ? penilaian.p1_k1 : null,
@@ -178,7 +179,7 @@ const getPenilaianByDosen = async (req, res) => {
 
         res.json({
             students: result,
-            dosenList: allDosens,
+            dosenList: allDosens.map(d => ({ ...d, id: d.nidn })),
             isKoordinator: isKoordinator
         });
     } catch (error) {
@@ -189,6 +190,12 @@ const getPenilaianByDosen = async (req, res) => {
 
 const assignPenguji = async (req, res) => {
     const { mahasiswaId, pengujiId } = req.body;
+    let suratTugasUrl = null;
+    
+    if (req.file) {
+        suratTugasUrl = `/uploads/${req.file.filename}`;
+    }
+
     try {
         let isKoordinator = false;
         let dosen = null;
@@ -209,7 +216,7 @@ const assignPenguji = async (req, res) => {
 
         const approvedJudul = await prisma.pengajuanJudul.findFirst({
             where: {
-                mahasiswaId: parseInt(mahasiswaId),
+                mahasiswaNim: mahasiswaId,
                 status: 'APPROVED'
             }
         });
@@ -218,37 +225,94 @@ const assignPenguji = async (req, res) => {
             return res.status(400).json({ message: "Mahasiswa belum memiliki judul bimbingan yang disetujui." });
         }
 
-        if (!isKoordinator && approvedJudul.dosenId !== dosen.id) {
-            return res.status(403).json({ message: "Anda tidak berhak memilih penguji untuk mahasiswa ini." });
+        if (!isKoordinator) {
+            return res.status(403).json({ message: "Hanya Dosen Koordinator yang berhak memberikan tugas pengujian." });
         }
 
         const existingSidang = await prisma.sidang.findFirst({
-            where: { mahasiswaId: parseInt(mahasiswaId) }
+            where: { mahasiswaNim: mahasiswaId }
+        });
+
+        if (existingSidang) {
+            const dataToUpdate = {
+                pengujiNidn: pengujiId ? String(pengujiId) : null,
+                status: 'TERJADWAL',
+                catatan: null // Clear catatan to indicate fresh assignment
+            };
+            if (suratTugasUrl) {
+                dataToUpdate.suratTugasUrl = suratTugasUrl;
+            }
+
+            const updated = await prisma.sidang.update({
+                where: { id: existingSidang.id },
+                data: dataToUpdate
+            });
+            return res.json(updated);
+        } else {
+            const dataToCreate = {
+                mahasiswaNim: mahasiswaId,
+                dosenNidn: approvedJudul.dosenNidn,
+                pengujiNidn: pengujiId ? String(pengujiId) : null,
+                judul: approvedJudul.judul,
+                status: 'TERJADWAL'
+            };
+            if (suratTugasUrl) {
+                dataToCreate.suratTugasUrl = suratTugasUrl;
+            }
+            const newSidang = await prisma.sidang.create({
+                data: dataToCreate
+            });
+            return res.json(newSidang);
+        }
+    } catch (error) {
+        console.error("Assign Penguji Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+const cancelPenguji = async (req, res) => {
+    const { mahasiswaId } = req.body;
+    try {
+        let isKoordinator = false;
+        let dosen = null;
+        if (req.user.role === 'admin') {
+            isKoordinator = true;
+        } else {
+            dosen = await prisma.dosen.findUnique({
+                where: { userId: req.user.id }
+            });
+            if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
+
+            isKoordinator = dosen.jabatan && (
+                dosen.jabatan.includes('Pejabat Prodi') || 
+                dosen.jabatan.includes('Koordinator KP') || 
+                dosen.jabatan.toLowerCase().includes('koordinator')
+            );
+        }
+
+        if (!isKoordinator) {
+            return res.status(403).json({ message: "Hanya Dosen Koordinator yang berhak membatalkan tugas pengujian." });
+        }
+
+        const existingSidang = await prisma.sidang.findFirst({
+            where: { mahasiswaNim: mahasiswaId }
         });
 
         if (existingSidang) {
             const updated = await prisma.sidang.update({
                 where: { id: existingSidang.id },
                 data: {
-                    pengujiId: pengujiId ? parseInt(pengujiId) : null,
-                    status: 'TERJADWAL'
+                    pengujiNidn: null,
+                    status: 'BATAL',
+                    catatan: 'Dibatalkan oleh Koordinator'
                 }
             });
             return res.json(updated);
         } else {
-            const newSidang = await prisma.sidang.create({
-                data: {
-                    mahasiswaId: parseInt(mahasiswaId),
-                    dosenId: approvedJudul.dosenId,
-                    pengujiId: pengujiId ? parseInt(pengujiId) : null,
-                    judul: approvedJudul.judul,
-                    status: 'TERJADWAL'
-                }
-            });
-            return res.json(newSidang);
+            return res.status(400).json({ message: "Sidang belum terdaftar." });
         }
     } catch (error) {
-        console.error("Assign Penguji Error:", error);
+        console.error("Cancel Penguji Error:", error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -272,7 +336,7 @@ const createPenilaian = async (req, res) => {
 
         const approvedJudul = await prisma.pengajuanJudul.findFirst({
             where: {
-                mahasiswaId: parseInt(mahasiswaId),
+                mahasiswaNim: mahasiswaId,
                 status: 'APPROVED'
             }
         });
@@ -293,7 +357,7 @@ const createPenilaian = async (req, res) => {
         // Check if already graded (find the single unified record for this student)
         const existing = await prisma.penilaian.findFirst({
             where: {
-                mahasiswaId: parseInt(mahasiswaId)
+                mahasiswaNim: mahasiswaId
             }
         });
 
@@ -322,8 +386,8 @@ const createPenilaian = async (req, res) => {
 
         const newPenilaian = await prisma.penilaian.create({
             data: {
-                mahasiswaId: parseInt(mahasiswaId),
-                dosenId: approvedJudul ? approvedJudul.dosenId : dosen.id,
+                mahasiswaNim: mahasiswaId,
+                dosenNidn: approvedJudul ? approvedJudul.dosenNidn : dosen.nidn,
                 ...data
             }
         });
@@ -412,7 +476,7 @@ const assignPembimbing = async (req, res) => {
 
         const approvedJudul = await prisma.pengajuanJudul.findFirst({
             where: {
-                mahasiswaId: parseInt(mahasiswaId),
+                mahasiswaNim: mahasiswaId,
                 status: 'APPROVED'
             }
         });
@@ -421,35 +485,35 @@ const assignPembimbing = async (req, res) => {
             return res.status(400).json({ message: "Mahasiswa belum memiliki judul bimbingan yang disetujui." });
         }
 
-        const newPembimbingId = parseInt(pembimbingId);
+        const newPembimbingId = String(pembimbingId);
 
         // Update PengajuanJudul dosenId
         await prisma.pengajuanJudul.update({
             where: { id: approvedJudul.id },
-            data: { dosenId: newPembimbingId }
+            data: { dosenNidn: newPembimbingId }
         });
 
         // Update Sidang dosenId if exists
         const existingSidang = await prisma.sidang.findFirst({
-            where: { mahasiswaId: parseInt(mahasiswaId) }
+            where: { mahasiswaNim: mahasiswaId }
         });
         if (existingSidang) {
             await prisma.sidang.update({
                 where: { id: existingSidang.id },
-                data: { dosenId: newPembimbingId }
+                data: { dosenNidn: newPembimbingId }
             });
         }
 
         // Update Bimbingan dosenId if exists
         await prisma.bimbingan.updateMany({
-            where: { mahasiswaId: parseInt(mahasiswaId) },
-            data: { dosenId: newPembimbingId }
+            where: { mahasiswaNim: mahasiswaId },
+            data: { dosenNidn: newPembimbingId }
         });
 
         // Update Penilaian dosenId if exists
         await prisma.penilaian.updateMany({
-            where: { mahasiswaId: parseInt(mahasiswaId) },
-            data: { dosenId: newPembimbingId }
+            where: { mahasiswaNim: mahasiswaId },
+            data: { dosenNidn: newPembimbingId }
         });
 
         return res.json({ message: "Dosen Pembimbing berhasil diperbarui." });
@@ -467,5 +531,6 @@ module.exports = {
     updatePenilaian,
     deletePenilaian,
     assignPenguji,
+    cancelPenguji,
     assignPembimbing
 };

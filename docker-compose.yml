@@ -7,7 +7,7 @@ services:
     ports:
       - "5002:5002"
     environment:
-      - DATABASE_URL=postgresql://postgres:DhandiAdam@db:5432/Skripsi?schema=public
+      - DATABASE_URL=postgresql://postgres:DhandiAdam@db:5432/SkripsiKp?schema=public
       - JWT_SECRET=${JWT_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - PORT=5002
@@ -16,6 +16,7 @@ services:
       - ./uploads:/app/uploads
       # Comment baris di bawah ini di production, aktifkan untuk development (hot-reload)
       - ./src:/app/src
+      - ./prisma:/app/prisma
     depends_on:
       - db
       - redis
@@ -28,9 +29,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: DhandiAdam
-      POSTGRES_DB: Skripsi
+      POSTGRES_DB: SkripsiKp
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

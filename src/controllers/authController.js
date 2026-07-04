@@ -59,8 +59,9 @@ const login = async (req, res) => {
                 username: user.username,
                 name: profileName,
                 role: user.role,
-                mahasiswaId: user.mahasiswa?.id,
-                dosenId: user.dosen?.id,
+                mahasiswaNim: user.mahasiswa?.nim,
+                tahunMasuk: user.mahasiswa?.tahunMasuk,
+                dosenNidn: user.dosen?.nip,
                 jabatan: user.dosen?.jabatan
             }
         });

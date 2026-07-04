@@ -245,6 +245,20 @@ Proses komunikasi real-time terintegrasi secara hibrida:
 
 ---
 
+---
+
+### 📅 10. Jadwal KP & Sidang (`/jadwal-kp`)
+
+| Method | Endpoint | Aktor / Akses | Deskripsi | Request Body / Query |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/api/jadwal-kp` | Semua | Mengambil seluruh riwayat jadwal KP | - |
+| **GET** | `/api/jadwal-kp/active` | Semua | Mengambil jadwal terdekat yang masih aktif | `?tipe=PENGARAHAN_KP` *(Query Opsional)* |
+| **POST** | `/api/jadwal-kp` | Staf, Admin | Membuat jadwal KP baru | `{ "tipe": "PENGARAHAN_KP", "judul": "...", "deskripsi": "...", "tanggal": "2026-07-01", "waktu": "10:00" }` |
+| **PUT** | `/api/jadwal-kp/:id` | Staf, Admin | Memperbarui jadwal KP yang sudah ada | `{ "judul": "...", "tanggal": "...", "waktu": "..." }` |
+| **DELETE** | `/api/jadwal-kp/:id` | Staf, Admin | Menghapus jadwal KP | - |
+
+---
+
 ## 📝 Penilaian Evaluasi Kerja Praktik (Grading Rules & Access Boundaries)
 
 Modul ini mengelola penilaian akhir kerja praktik mahasiswa berdasarkan evaluasi dari Dosen Pembimbing (P1) dan Dosen Penguji (P2).

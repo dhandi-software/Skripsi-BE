@@ -9,7 +9,7 @@ const getAllSanksi = async (req, res) => {
             });
             if (!student) return res.status(404).json({ message: "Student profile not found" });
             const list = await prisma.sanksiAdministrasi.findMany({
-                where: { mahasiswaId: student.id },
+                where: { mahasiswaNim: student.id },
                 include: { dosen: true }
             });
             return res.json(list);
@@ -32,7 +32,7 @@ const getAllSanksi = async (req, res) => {
                 });
             } else {
                 list = await prisma.sanksiAdministrasi.findMany({
-                    where: { dosenId: dosen.id },
+                    where: { dosenNidn: dosen.nidn },
                     include: { mahasiswa: true, dosen: true }
                 });
             }
@@ -66,7 +66,7 @@ const getSupervisedStudents = async (req, res) => {
             list = await prisma.pengajuanJudul.findMany({
                 where: {
                     status: 'APPROVED',
-                    dosenId: dosen.id
+                    dosenNidn: dosen.nidn
                 },
                 include: { mahasiswa: true }
             });
@@ -75,13 +75,12 @@ const getSupervisedStudents = async (req, res) => {
         const students = [];
         const seen = new Set();
         for (const item of list) {
-            if (item.mahasiswa && !seen.has(item.mahasiswa.id)) {
-                seen.add(item.mahasiswa.id);
+            if (item.mahasiswa && !seen.has(item.mahasiswa.nim)) {
+                seen.add(item.mahasiswa.nim);
                 students.push({
-                    id: item.mahasiswa.id,
+                    id: item.mahasiswa.nim,
                     nama: item.mahasiswa.nama,
-                    nim: item.mahasiswa.nim,
-                    jurusan: item.mahasiswa.jurusan
+                    nim: item.mahasiswa.nim
                 });
             }
         }
@@ -102,24 +101,24 @@ const createSanksi = async (req, res) => {
         });
 
         if (dosen) {
-            dosenId = dosen.id;
+            dosenId = dosen.nidn;
         } else {
             const approvedJudul = await prisma.pengajuanJudul.findFirst({
-                where: { mahasiswaId: parseInt(mahasiswaId), status: 'APPROVED' }
+                where: { mahasiswaNim: mahasiswaId, status: 'APPROVED' }
             });
             if (approvedJudul) {
-                dosenId = approvedJudul.dosenId;
+                dosenId = approvedJudul.dosenNidn;
             } else {
                 const firstDosen = await prisma.dosen.findFirst();
                 if (!firstDosen) return res.status(400).json({ message: "No Dosen found in system" });
-                dosenId = firstDosen.id;
+                dosenId = firstDosen.nidn;
             }
         }
 
         const newSanksi = await prisma.sanksiAdministrasi.create({
             data: {
-                mahasiswaId: parseInt(mahasiswaId),
-                dosenId: dosenId,
+                mahasiswaNim: mahasiswaId,
+                dosenNidn: dosenId,
                 nama,
                 nim,
                 hariSidang,
