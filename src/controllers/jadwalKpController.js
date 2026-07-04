@@ -1,4 +1,4 @@
-const prisma = require('../prisma');
+﻿const prisma = require('../prisma');
 
 const getAllJadwalKp = async (req, res) => {
     try {
@@ -23,7 +23,7 @@ const getActiveJadwalKp = async (req, res) => {
         const now = new Date();
 
         const whereClause = {
-            tanggalSelesai: { gte: now }
+            tanggal: { gte: now }
         };
 
         if (tipe) {
@@ -33,7 +33,7 @@ const getActiveJadwalKp = async (req, res) => {
         const jadwal = await prisma.jadwalKp.findFirst({
             where: whereClause,
             orderBy: {
-                tanggalSelesai: 'asc' // Find the one ending soonest
+                tanggal: 'asc' // Find the one happening soonest
             }
         });
 
@@ -65,8 +65,7 @@ const createJadwalKp = async (req, res) => {
                 tipe,
                 judul,
                 deskripsi,
-                tanggalMulai: finalDate,
-                tanggalSelesai: finalDate,
+                tanggal: finalDate,
                 stafNip: staf.nip
             }
         });
@@ -91,8 +90,7 @@ const updateJadwalKp = async (req, res) => {
                 tipe,
                 judul,
                 deskripsi,
-                tanggalMulai: finalDate,
-                tanggalSelesai: finalDate
+                tanggal: finalDate
             }
         });
 
@@ -123,3 +121,4 @@ module.exports = {
     updateJadwalKp,
     deleteJadwalKp
 };
+

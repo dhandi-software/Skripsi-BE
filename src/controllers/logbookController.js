@@ -69,7 +69,7 @@ exports.getTempatKP = async (req, res) => {
                  where: { nim: finalOwnerId },
                  include: { tempatKP: true }
              });
-             info = mhs?.tempatKP || null;
+             info = mhs?.tempatKP?.[0] || null;
         }
 
         if (!info) {
@@ -115,20 +115,24 @@ exports.updateTempatKP = async (req, res) => {
              return res.status(403).json({ message: "Hanya untuk mahasiswa" }); // Dosen logbook info has been removed in schema changes.
         }
 
-        const updatedMahasiswa = await prisma.mahasiswa.update({
-            where: { nim: targetNim },
-            data: {
-                tempatKP: {
-                    upsert: {
-                        create: data,
-                        update: data
-                    }
-                }
-            },
-            include: { tempatKP: true }
+        const existingInfo = await prisma.tempatKP.findFirst({
+            where: { mahasiswaNim: targetNim }
         });
 
-        const info = updatedMahasiswa.tempatKP;
+        let info;
+        if (existingInfo) {
+            info = await prisma.tempatKP.update({
+                where: { id: existingInfo.id },
+                data
+            });
+        } else {
+            info = await prisma.tempatKP.create({
+                data: {
+                    ...data,
+                    mahasiswaNim: targetNim
+                }
+            });
+        }
 
         res.json({ message: "Info logbook diperbarui", data: info });
     } catch (error) {
@@ -273,6 +277,28 @@ exports.getStudentProfile = async (req, res) => {
         res.json(mahasiswa);
     } catch (error) {
         console.error("Get Logbook Student Profile Error:", error);
+        res.status(500).json({ message: "Terjadi kesalahan pada server" });
+    }
+};
+
+exports.getCompanyList = async (req, res) => {
+    try {
+        const companies = await prisma.tempatKP.findMany({
+            distinct: ['namaPerusahaan'],
+            where: {
+                namaPerusahaan: { not: null, not: "" }
+            },
+            select: {
+                namaPerusahaan: true,
+                tlpFaxPerusahaan: true,
+                alamatPerusahaan: true,
+                kontakPembimbing: true
+            },
+            orderBy: { namaPerusahaan: 'asc' }
+        });
+        res.json(companies);
+    } catch (error) {
+        console.error("Get Company List Error:", error);
         res.status(500).json({ message: "Terjadi kesalahan pada server" });
     }
 };

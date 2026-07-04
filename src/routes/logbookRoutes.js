@@ -10,6 +10,9 @@ router.use(authenticateToken);
 router.get('/info', logbookController.getTempatKP);
 router.post('/info', logbookController.updateTempatKP);
 
+// Logbook Companies
+router.get('/companies', logbookController.getCompanyList);
+
 // Logbook Entries
 router.get('/entries', logbookController.getLogbooks);
 router.post('/entries/sync', logbookController.syncLogbooks);

@@ -43,8 +43,7 @@ model Mahasiswa {
   penilaian          Penilaian[]
   sanksiAdministrasi SanksiAdministrasi[]
   sidang             Sidang[]
-  tempatKPId         Int?                 @unique
-  tempatKP           TempatKP?            @relation(fields: [tempatKPId], references: [id])
+  tempatKP           TempatKP[]
 }
 
 model Dosen {
@@ -277,7 +276,8 @@ model TempatKP {
   tlpFaxPerusahaan String?
   alamatPerusahaan String?
   kontakPembimbing String?
-  mahasiswa        Mahasiswa?
+  mahasiswaNim     String?
+  mahasiswa        Mahasiswa? @relation(fields: [mahasiswaNim], references: [nim], onDelete: Cascade)
 }
 
 model Logbook {
@@ -314,8 +314,7 @@ model JadwalKp {
   tipe           String
   judul          String
   deskripsi      String?
-  tanggalMulai   DateTime
-  tanggalSelesai DateTime
+  tanggal        DateTime
   stafNip        String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

@@ -121,6 +121,24 @@ Semua REST API menggunakan Base URL: `http://localhost:5002/api`
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **POST** | `/api/auth/login` | Semua (Public) | Login user & dapatkan JWT | `{ "username": "...", "password": "..." }` | `{ "token": "jwt...", "user": { "role": "..." } }` |
 | **POST** | `/api/auth/change-password` | Semua | Mengganti password user | `{ "oldPassword": "...", "newPassword": "..." }` | `{ "message": "Password updated" }` |
+| **POST** | `/api/auth/check-email` | Semua (Public) | Mengecek keberadaan email untuk lupa password | `{ "email": "..." }` | `{ "userId": 1, "role": "mahasiswa" }` |
+| **POST** | `/api/auth/reset-password` | Semua (Public) | Mereset password baru | `{ "userId": 1, "newPassword": "..." }` | `{ "message": "Password berhasil direset" }` |
+
+---
+
+### 💬 2. Obrolan / Live Chat (`/chat`)
+
+| Method | Endpoint | Aktor / Akses | Deskripsi | Request Body / Query |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/api/chat/contacts/:userId` | Semua | Mendapatkan daftar kontak chat & grup | - |
+| **GET** | `/api/chat/history/:userId/:otherUserId` | Semua | Riwayat obrolan (dengan user/grup/publik) | - |
+| **GET** | `/api/chat/unread/:userId` | Semua | Total jumlah pesan belum terbaca | - |
+| **POST** | `/api/chat/upload` | Semua | Mengunggah lampiran dokumen/gambar (Maks 5MB) | `FormData: { file: [File] }` |
+| **GET** | `/api/chat/public/members` | Semua | Daftar pengguna di ruang publik | - |
+| **POST** | `/api/chat/public/kick` | Admin/Staf | Mengeluarkan user dari ruang publik | `{ "userId": 5 }` |
+| **POST** | `/api/chat/public/unban` | Admin/Staf | Mengembalikan user ke ruang publik | `{ "userId": 5 }` |
+| **GET** | `/api/chat/groups/:userId` | Semua | Daftar grup chat pengguna | - |
+| **POST** | `/api/chat/groups/create` | Dosen | Membuat grup bimbingan baru | `{ "name": "Bimbingan...", "adminId": 2, "memberIds": [1, 3] }` |
 
 ---
 

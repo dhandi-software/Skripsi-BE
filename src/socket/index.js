@@ -104,6 +104,12 @@ module.exports = (io) => {
             message.sender.username = fullName;
         }
 
+        // Format parent sender username if it's a reply
+        if (message.parent && message.parent.sender) {
+            const parentFullName = message.parent.sender.mahasiswa?.nama || message.parent.sender.dosen?.nama || message.parent.sender.username;
+            message.parent.sender.username = parentFullName;
+        }
+
         if (isPublic) {
             socket.to('public_room').emit('receive_message', message);
             socket.emit('message_sent', message);
