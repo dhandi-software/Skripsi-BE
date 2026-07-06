@@ -1,8 +1,10 @@
-﻿const prisma = require('../prisma');
+const prisma = require('../prisma');
 
 const getAllJadwalKp = async (req, res) => {
     try {
+        const now = new Date();
         const jadwal = await prisma.jadwalKp.findMany({
+            where: { tanggal: { gte: now } },
             include: {
                 staf: true
             },

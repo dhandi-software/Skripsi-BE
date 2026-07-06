@@ -83,6 +83,7 @@ const createMahasiswa = async (req, res) => {
     }
 };
 
+
 const createMahasiswaMassal = async (req, res) => {
     try {
         const { users } = req.body;
@@ -1227,9 +1228,31 @@ const deleteAllDosen = async (req, res) => {
 
 const getMahasiswaSudahPengajuan = async (req, res) => {
     try {
+        const { search } = req.query;
+        let whereCondition = {};
+        
+        if (search) {
+            whereCondition = {
+                mahasiswa: {
+                    OR: [
+                        { nama: { contains: search, mode: 'insensitive' } },
+                        { nim: { contains: search, mode: 'insensitive' } }
+                    ]
+                }
+            };
+        }
+
         const pengajuanList = await prisma.pengajuanJudul.findMany({
+            where: whereCondition,
             include: {
-                mahasiswa: true,
+                mahasiswa: {
+                    include: {
+                        logbook: {
+                            orderBy: { tanggalPukul: 'desc' }
+                        },
+                        tempatKP: true
+                    }
+                },
                 dosen: true
             },
             orderBy: {
@@ -1246,12 +1269,22 @@ const getMahasiswaSudahPengajuan = async (req, res) => {
 
 const getMahasiswaTanpaPengajuan = async (req, res) => {
     try {
+        const { search } = req.query;
+        let whereCondition = {
+            pengajuanJudul: {
+                none: {}
+            }
+        };
+
+        if (search) {
+            whereCondition.OR = [
+                { nama: { contains: search, mode: 'insensitive' } },
+                { nim: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
         const students = await prisma.mahasiswa.findMany({
-            where: {
-                pengajuanJudul: {
-                    none: {}
-                }
-            },
+            where: whereCondition,
             include: {
                 user: {
                     select: { id: true }

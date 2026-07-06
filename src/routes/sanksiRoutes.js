@@ -8,5 +8,6 @@ router.get('/students', authenticateToken, sanksiController.getSupervisedStudent
 router.post('/', authenticateToken, sanksiController.createSanksi);
 router.put('/:id', authenticateToken, sanksiController.updateSanksi);
 router.delete('/:id', authenticateToken, sanksiController.deleteSanksi);
+router.patch('/:id/terima', authenticateToken, sanksiController.terimaHardcover);
 
 module.exports = router;

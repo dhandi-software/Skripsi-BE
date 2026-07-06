@@ -303,6 +303,8 @@ model SanksiAdministrasi {
   tanggalSidang String
   hariTenggat   String
   tanggalSurat  String
+  status        String    @default("Menunggu Hardcover")
+  tenggatWaktu  DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   dosen         Dosen     @relation(fields: [dosenNidn], references: [nidn], onDelete: Cascade)
