@@ -21,7 +21,7 @@ const applyForSidang = async (req, res) => {
         const activeJadwal = await prisma.jadwalKp.findFirst({
             where: {
                 tipe: 'PENGARAHAN_SIDANG',
-                tanggalSelesai: { gte: now }
+                tanggal: { gte: now }
             }
         });
 

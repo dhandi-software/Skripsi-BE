@@ -555,6 +555,12 @@ const deleteAnnotation = async (req, res) => {
 const getAllProdiBimbingan = async (req, res) => {
     try {
         const dosens = await prisma.dosen.findMany({
+            where: {
+                OR: [
+                    { jabatan: { contains: 'Pembimbing', mode: 'insensitive' } },
+                    { jabatan: { contains: 'Koordinator', mode: 'insensitive' } }
+                ]
+            },
             include: {
                 pengajuanJudul: {
                     where: { status: 'APPROVED' },

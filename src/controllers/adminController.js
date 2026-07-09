@@ -706,6 +706,10 @@ const updateUser = async (req, res) => {
             updateData.password = await bcrypt.hash(password, 10);
         }
 
+        if (role && role !== user.role) {
+            updateData.role = role;
+        }
+
         // Transaction for atomic update
         await prisma.$transaction(async (prisma) => {
              // Update User basic info
@@ -737,7 +741,8 @@ const updateUser = async (req, res) => {
                          nip: profileData.nip,
                          email: email || undefined,
                          nomorTelepon: profileData.nomorTelepon,
-                         jabatan: profileData.jabatan
+                         jabatan: profileData.jabatan,
+                         peminatan: profileData.peminatan
                      }
                  });
              } else if (user.role === 'staf') {
