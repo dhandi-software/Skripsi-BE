@@ -140,24 +140,42 @@ const getLaporanAkhirDosen = async (req, res) => {
             return res.status(404).json({ message: "Dosen profile not found" });
         }
 
-        // Get all unique students supervised by this dosen via approved title proposals
+        const isAdmin = req.user.role === 'admin';
+        const isProdi = dosen && dosen.jabatan && (
+            dosen.jabatan.toLowerCase().includes("koordinator") || 
+            dosen.jabatan.toLowerCase().includes("kepala program studi") || 
+            dosen.jabatan.toLowerCase().includes("kaprodi")
+            
+        );
+
+        let whereClause = { status: 'APPROVED' };
+        let includeWhereClause = undefined; // if admin/prodi, include all
+
+        if (!isAdmin && !isProdi) {
+            whereClause.dosenNidn = dosen.nidn;
+            includeWhereClause = { dosenNidn: dosen.nidn };
+        }
+
+        // Get all unique students supervised by this dosen via approved title proposals (or all students if Admin/Prodi)
         const pengajuanList = await prisma.pengajuanJudul.findMany({
-            where: {
-                dosenNidn: dosen.nidn,
-                status: 'APPROVED'
-            },
+            where: whereClause,
             include: {
                 mahasiswa: {
                     include: {
-                        pengajuanJudul: { where: { dosenNidn: dosen.nidn } },
-                        penilaian: { where: { dosenNidn: dosen.nidn } },
-                        bimbingan: { where: { dosenNidn: dosen.nidn } },
+                        pengajuanJudul: includeWhereClause ? { where: includeWhereClause } : true,
+                        penilaian: includeWhereClause ? { where: includeWhereClause } : true,
+                        bimbingan: includeWhereClause ? { where: includeWhereClause } : true,
                         logbook: true,
-                        tempatKP: true
+                        tempatKP: true,
+                        sidang: { orderBy: { createdAt: 'desc' }, take: 1 }
                     }
                 }
             }
         });
+
+        // Fetch all dosens to map pengujiNidn to nama
+        const allDosen = await prisma.dosen.findMany({ select: { nidn: true, nama: true } });
+        const dosenMap = new Map(allDosen.map(d => [d.nidn, d.nama]));
 
         const mahasiswaMap = new Map();
         pengajuanList.forEach(p => {
@@ -201,6 +219,12 @@ const getLaporanAkhirDosen = async (req, res) => {
             const logbooks = mhs.logbook || [];
             const logbooksApproved = logbooks.filter(l => l.pembimbingParaf !== null && l.pembimbingParaf !== "");
 
+            const sidang = mhs.sidang && mhs.sidang.length > 0 ? mhs.sidang[0] : null;
+            let pengujiNama = penilaian ? penilaian.p2_nama : null;
+            if (!pengujiNama && sidang && sidang.pengujiNidn) {
+                pengujiNama = dosenMap.get(sidang.pengujiNidn) || null;
+            }
+
             return {
                 id: mhs.nim,
                 nama: mhs.nama,
@@ -214,14 +238,15 @@ const getLaporanAkhirDosen = async (req, res) => {
                 p1_k2: penilaian ? penilaian.p1_k2 : null,
                 p1_k3: penilaian ? penilaian.p1_k3 : null,
                 p1_total: penilaian ? penilaian.p1_total : null,
-                p1_nama: penilaian ? penilaian.p1_nama : null,
+                p1_nama: penilaian ? penilaian.p1_nama : (pengajuan ? dosenMap.get(pengajuan.dosenNidn) : null),
                 p2_k1: penilaian ? penilaian.p2_k1 : null,
                 p2_k2: penilaian ? penilaian.p2_k2 : null,
                 p2_k3: penilaian ? penilaian.p2_k3 : null,
                 p2_total: penilaian ? penilaian.p2_total : null,
-                p2_nama: penilaian ? penilaian.p2_nama : null,
+                p2_nama: pengujiNama,
                 nilaiAkhir: penilaian ? penilaian.nilaiRataRata : null,
                 keteranganPenilaian: penilaian ? penilaian.keterangan : null,
+                tanggalPenilaian: penilaian ? penilaian.tanggal : null,
                 statusProgress,
                 tempatKP: mhs.tempatKP || null,
                 logbooks: logbooks,

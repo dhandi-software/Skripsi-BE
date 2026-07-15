@@ -177,6 +177,12 @@ const getPenilaianByDosen = async (req, res) => {
             };
         }));
 
+        result.sort((a, b) => {
+            const namaA = a.nama ? a.nama.toLowerCase() : "";
+            const namaB = b.nama ? b.nama.toLowerCase() : "";
+            return namaA.localeCompare(namaB);
+        });
+
         res.json({
             students: result,
             dosenList: allDosens.map(d => ({ ...d, id: d.nidn })),

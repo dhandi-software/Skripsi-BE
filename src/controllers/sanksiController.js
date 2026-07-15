@@ -33,27 +33,10 @@ const getAllSanksi = async (req, res) => {
             return res.json(syncedList);
         } else {
             // DOSEN, KAPRODI, STAF, ADMIN
-            const dosen = await prisma.dosen.findUnique({
-                where: { userId: req.user.id }
+            const list = await prisma.sanksiAdministrasi.findMany({
+                include: { mahasiswa: true, dosen: true },
+                orderBy: { createdAt: 'desc' }
             });
-            
-            const isKoordinator = !dosen || (dosen.jabatan && (
-                dosen.jabatan.includes('Pejabat Prodi') || 
-                dosen.jabatan.includes('Koordinator KP') || 
-                dosen.jabatan.toLowerCase().includes('koordinator')
-            )) || role === 'ADMIN' || role === 'STAF' || role === 'KAPRODI';
-
-            let list;
-            if (isKoordinator) {
-                list = await prisma.sanksiAdministrasi.findMany({
-                    include: { mahasiswa: true, dosen: true }
-                });
-            } else {
-                list = await prisma.sanksiAdministrasi.findMany({
-                    where: { dosenNidn: dosen.nidn },
-                    include: { mahasiswa: true, dosen: true }
-                });
-            }
             const syncedList = await syncSanksiStatus(list);
             return res.json(syncedList);
         }
@@ -85,12 +68,18 @@ const getSupervisedStudents = async (req, res) => {
         const seen = new Set();
         for (const item of list) {
             if (!hasSanksiSet.has(item.nim)) {
-                students.push({
-                    id: item.nim,
-                    nama: item.nama,
-                    nim: item.nim,
-                    tanggalSidang: item.sidang && item.sidang.length > 0 ? item.sidang[0].tanggalSidang : null
-                });
+                const statusSidang = item.sidang && item.sidang.length > 0 ? item.sidang[0].status : null;
+                const tanggalSidang = item.sidang && item.sidang.length > 0 ? item.sidang[0].tanggalSidang : null;
+                
+                if (statusSidang === 'TERJADWAL' && tanggalSidang) {
+                    students.push({
+                        id: item.nim,
+                        nama: item.nama,
+                        nim: item.nim,
+                        tanggalSidang: tanggalSidang,
+                        statusSidang: statusSidang
+                    });
+                }
             }
         }
 

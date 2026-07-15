@@ -67,8 +67,8 @@ const applyForSidang = async (req, res) => {
                 dosenNidn: approvedJudul.dosenNidn,
                 judul: finalJudul,
                 laporanUrl: `/uploads/${file.filename}`, // multer saves to uploads dir
-                status: 'MENUNGGU_PERSETUJUAN_PEMBIMBING',
-                pembimbingApproved: false,
+                status: 'MENUNGGU_PENJADWALAN_KOORDINATOR',
+                pembimbingApproved: true, // Auto-approve or skip
                 mahasiswaSeen: true
             }
         });
