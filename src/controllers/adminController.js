@@ -2,27 +2,41 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
+const isValidEmailDomain = (email) => {
+    if (!email || email.includes(" ")) return false;
+    const allowedDomains = ["@student.univ.ac.id", "@univ.ac.id", "@gmail.com"];
+    return allowedDomains.some(domain => email.toLowerCase().endsWith(domain));
+};
+
 const createMahasiswa = async (req, res) => {
     try {
-        const { email, password, nama, nim, jurusan, tahunMasuk } = req.body;
+        const { email, password, nama, nim, tahunMasuk } = req.body;
 
         // Basic Validation
-        if (!email || !password || !nama || !nim || !jurusan || !tahunMasuk) {
+        if (!email || !password || !nama || !nim || !tahunMasuk) {
             return res.status(400).json({ message: "All fields are required" });
+        }
+
+        if (!isValidEmailDomain(email)) {
+            return res.status(400).json({ message: "Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
         }
 
         // Check if user exists (Email or NIM as Username)
         const existingUser = await prisma.user.findFirst({
             where: {
                 OR: [
-                    { email },
+                    { mahasiswa: { email } },
+                    { dosen: { email } },
+                    { staf: { email } },
                     { username: nim }
                 ]
-            }
+            },
+            include: { mahasiswa: true, dosen: true, staf: true }
         });
 
         if (existingUser) {
-            const conflict = existingUser.email === email ? "Email" : "NIM (Username)";
+            const isEmail = existingUser.mahasiswa?.email === email || existingUser.dosen?.email === email || existingUser.staf?.email === email;
+            const conflict = isEmail ? "Email" : "NIM (Username)";
             return res.status(400).json({ message: `${conflict} sudah terdaftar` });
         }
 
@@ -43,7 +57,6 @@ const createMahasiswa = async (req, res) => {
                     // Let's use email prefix or NIM. existing auth might rely on username.
                     // let's use email for now or requested field. 
                     // Actually, let's use NIM as username to ensure uniqueness easily.
-                    email,
                     password: hashedPassword,
                     role: 'mahasiswa', // lowercase as per used convention
                 }
@@ -54,7 +67,7 @@ const createMahasiswa = async (req, res) => {
                     userId: user.id,
                     nim,
                     nama,
-                    jurusan,
+                    email,
                     tahunMasuk
                 }
             });
@@ -70,75 +83,89 @@ const createMahasiswa = async (req, res) => {
     }
 };
 
+
 const createMahasiswaMassal = async (req, res) => {
     try {
         const { users } = req.body;
-
         if (!users || !Array.isArray(users) || users.length === 0) {
             return res.status(400).json({ message: "Users array is required and must not be empty" });
         }
 
-        // Validate basic fields to catch errors early
-        for (const user of users) {
-             if (!user.email || !user.password || !user.nama || !user.nim || !user.jurusan || !user.tahunMasuk) {
-                 return res.status(400).json({ message: "All fields are required for each user in the array." });
-             }
+        const emails = users.map(u => u.email).filter(Boolean);
+        const nims = users.map(u => u.nim).filter(Boolean);
+
+        // Bulk validate basics
+        if (emails.length !== users.length || nims.length !== users.length) {
+            return res.status(400).json({ message: "All fields are required for each user in the array." });
         }
 
-        const results = await prisma.$transaction(async (prisma) => {
+        for (const item of users) {
+            if (!isValidEmailDomain(item.email)) {
+                return res.status(400).json({ message: `Email ${item.email} tidak valid. Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com` });
+            }
+        }
+
+        // Fetch existing users (User, Mahasiswa)
+        const existingUsers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { mahasiswa: { email: { in: emails } } },
+                    { dosen: { email: { in: emails } } },
+                    { staf: { email: { in: emails } } },
+                    { username: { in: nims } }
+                ]
+            },
+            include: { mahasiswa: true, dosen: true, staf: true }
+        });
+
+        const existingNims = await prisma.mahasiswa.findMany({
+            where: { nim: { in: nims } },
+            select: { nim: true }
+        });
+
+        const nimSet = new Set(existingNims.map(m => m.nim));
+        const emailSet = new Set(
+            existingUsers.flatMap(u => [u.mahasiswa?.email, u.dosen?.email, u.staf?.email]).filter(Boolean)
+        );
+        const usernameSet = new Set(existingUsers.map(u => u.username));
+
+        // Check for duplicates in the incoming array against the DB
+        for (const item of users) {
+            if (emailSet.has(item.email)) {
+                return res.status(400).json({ message: `Data duplikat ditemukan untuk Email: ${item.email}` });
+            }
+            if (usernameSet.has(item.nim) || nimSet.has(item.nim)) {
+                return res.status(400).json({ message: `Data duplikat ditemukan untuk NIM: ${item.nim}` });
+            }
+        }
+
+        // Perform transaction
+        const results = await prisma.$transaction(async (tx) => {
             const createdUsers = [];
-            for (const item of users) {
-                // Check if email or NIM already exists (globally in User table or specifically in Mahasiswa table)
-                const existingUser = await prisma.user.findFirst({
-                    where: {
-                        OR: [
-                            { email: item.email },
-                            { username: item.nim }
-                        ]
-                    }
-                });
-                const existingNim = await prisma.mahasiswa.findUnique({ where: { nim: item.nim } });
-                
-                if (existingUser || existingNim) {
-                    let detail = "";
-                    let val = "";
-                    if (existingUser?.email === item.email) {
-                        detail = "Email";
-                        val = item.email;
-                    } else if (existingUser?.username === item.nim) {
-                        detail = "NIM";
-                        val = item.nim;
-                    } else {
-                        detail = "NIM";
-                        val = item.nim;
-                    }
-                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${val}`);
-                }
-
+            // Map users to promises
+            const userPromises = users.map(async (item) => {
                 const hashedPassword = await bcrypt.hash(item.password, 10);
-
-                const user = await prisma.user.create({
+                const user = await tx.user.create({
                     data: {
                         username: item.nim,
-                        email: item.email,
                         password: hashedPassword,
                         role: 'mahasiswa',
                     }
                 });
-
-                const mahasiswa = await prisma.mahasiswa.create({
+                const mahasiswa = await tx.mahasiswa.create({
                     data: {
                         userId: user.id,
                         nim: item.nim,
                         nama: item.nama,
-                        jurusan: item.jurusan,
+                        email: item.email,
                         tahunMasuk: item.tahunMasuk
                     }
                 });
-
-                createdUsers.push({ user, mahasiswa });
-            }
-            return createdUsers;
+                return { user, mahasiswa };
+            });
+            
+            // Wait for all creations in parallel
+            return await Promise.all(userPromises);
         });
 
         res.status(201).json({ message: "Mahasiswa accounts created successfully", count: results.length });
@@ -152,65 +179,85 @@ const createMahasiswaMassal = async (req, res) => {
 const createDosenMassal = async (req, res) => {
     try {
         const { users } = req.body;
-        if (!users || !Array.isArray(users)) {
-            return res.status(400).json({ message: "Invalid users data provided" });
+        if (!users || !Array.isArray(users) || users.length === 0) {
+            return res.status(400).json({ message: "Users array is required and must not be empty" });
         }
 
-        const results = await prisma.$transaction(async (prisma) => {
-            const createdUsers = [];
-            for (const item of users) {
-                // Check if email or NIDN already exists
-                // Use D- prefix for Dosen username to avoid conflict with Mahasiswa NIM
-                const dosenUsername = `D-${item.nim}`;
-                const existingUser = await prisma.user.findFirst({
-                    where: {
-                        OR: [
-                            { email: item.email },
-                            { username: dosenUsername }
-                        ]
-                    }
-                });
-                const existingNidn = await prisma.dosen.findUnique({ where: { nidn: item.nim } });
-                
-                if (existingUser || existingNidn) {
-                    let detail = "";
-                    let val = "";
-                    if (existingUser?.email === item.email) {
-                        detail = "Email";
-                        val = item.email;
-                    } else if (existingUser?.username === dosenUsername) {
-                        detail = "NIDN";
-                        val = item.nim;
-                    } else {
-                        detail = "NIDN";
-                        val = item.nim;
-                    }
-                    throw new Error(`Data duplikat ditemukan untuk ${detail}: ${val}`);
-                }
+        for (const item of users) {
+            if (!isValidEmailDomain(item.email)) {
+                return res.status(400).json({ message: `Email ${item.email} tidak valid. Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com` });
+            }
+        }
 
+        const normalizedUsers = users.map(u => ({
+            ...u,
+            identifier: u.nidn || u.nip || u.nim,
+            nip: u.nip || null
+        }));
+
+        const emails = normalizedUsers.map(u => u.email).filter(Boolean);
+        const identifiers = normalizedUsers.map(u => u.identifier).filter(Boolean);
+        const usernames = identifiers.map(id => `D-${id}`);
+
+        // Fetch existing users
+        const existingUsers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { mahasiswa: { email: { in: emails } } },
+                    { dosen: { email: { in: emails } } },
+                    { staf: { email: { in: emails } } },
+                    { username: { in: usernames } }
+                ]
+            },
+            include: { mahasiswa: true, dosen: true, staf: true }
+        });
+
+        const existingNidns = await prisma.dosen.findMany({
+            where: { nidn: { in: identifiers } },
+            select: { nidn: true }
+        });
+
+        const nidnSet = new Set(existingNidns.map(d => d.nidn));
+        const emailSet = new Set(
+            existingUsers.flatMap(u => [u.mahasiswa?.email, u.dosen?.email, u.staf?.email]).filter(Boolean)
+        );
+        const usernameSet = new Set(existingUsers.map(u => u.username));
+
+        for (const item of normalizedUsers) {
+            if (emailSet.has(item.email)) {
+                return res.status(400).json({ message: `Data duplikat ditemukan untuk Email: ${item.email}` });
+            }
+            if (usernameSet.has(`D-${item.identifier}`) || nidnSet.has(item.identifier)) {
+                return res.status(400).json({ message: `Data duplikat ditemukan untuk NIDN: ${item.identifier}` });
+            }
+        }
+
+        const results = await prisma.$transaction(async (tx) => {
+            const userPromises = normalizedUsers.map(async (item) => {
                 const hashedPassword = await bcrypt.hash(item.password, 10);
-
-                const user = await prisma.user.create({
+                const dosenUsername = `D-${item.identifier}`;
+                
+                const user = await tx.user.create({
                     data: {
                         username: dosenUsername,
-                        email: item.email,
                         password: hashedPassword,
                         role: 'dosen',
                     }
                 });
 
-                const dosen = await prisma.dosen.create({
+                const dosen = await tx.dosen.create({
                     data: {
                         userId: user.id,
-                        nidn: item.nim,
+                        nidn: item.identifier,
+                        nip: item.nip,
+                        email: item.email,
                         nama: item.nama,
                         jabatan: item.jabatan || "Dosen"
                     }
                 });
-
-                createdUsers.push({ user, dosen });
-            }
-            return createdUsers;
+                return { user, dosen };
+            });
+            return await Promise.all(userPromises);
         });
 
         res.status(201).json({ message: "Dosen accounts created successfully", count: results.length });
@@ -223,11 +270,15 @@ const createDosenMassal = async (req, res) => {
 
 const createDosen = async (req, res) => {
     try {
-        const { email, password, nama, nidn, jabatan } = req.body;
+        const { email, password, nama, nidn, nip, jabatan, peminatan } = req.body;
 
         // Basic Validation
         if (!email || !password || !nama || !nidn || !jabatan) {
-            return res.status(400).json({ message: "All fields are required" });
+            return res.status(400).json({ message: "Semua field yang diperlukan harus diisi" });
+        }
+
+        if (!isValidEmailDomain(email)) {
+            return res.status(400).json({ message: "Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
         }
 
         // Check if user exists (Email or D-NIDN as Username)
@@ -235,14 +286,18 @@ const createDosen = async (req, res) => {
         const existingUser = await prisma.user.findFirst({
             where: {
                 OR: [
-                    { email },
+                    { mahasiswa: { email } },
+                    { dosen: { email } },
+                    { staf: { email } },
                     { username: dosenUsername }
                 ]
-            }
+            },
+            include: { mahasiswa: true, dosen: true, staf: true }
         });
 
         if (existingUser) {
-            const conflict = existingUser.email === email ? "Email" : "NIDN (Username)";
+            const isEmail = existingUser.mahasiswa?.email === email || existingUser.dosen?.email === email || existingUser.staf?.email === email;
+            const conflict = isEmail ? "Email" : "NIDN (Username)";
             return res.status(400).json({ message: `${conflict} sudah terdaftar` });
         }
 
@@ -259,7 +314,6 @@ const createDosen = async (req, res) => {
             const user = await prisma.user.create({
                 data: {
                     username: dosenUsername, // Use D- prefix
-                    email,
                     password: hashedPassword,
                     role: 'dosen',
                 }
@@ -269,8 +323,11 @@ const createDosen = async (req, res) => {
                 data: {
                     userId: user.id,
                     nidn,
+                    nip: nip || null,
+                    email,
                     nama,
-                    jabatan
+                    jabatan,
+                    peminatan: peminatan || []
                 }
             });
 
@@ -287,11 +344,15 @@ const createDosen = async (req, res) => {
 
 const createStaf = async (req, res) => {
     try {
-        const { email, password, nama } = req.body;
+        const { email, password, nama, nip } = req.body;
 
         // Basic Validation
-        if (!email || !password || !nama) {
-            return res.status(400).json({ message: "Email, password, and nama are required" });
+        if (!email || !password || !nama || !nip) {
+            return res.status(400).json({ message: "Email, password, nama, and nip are required" });
+        }
+
+        if (!isValidEmailDomain(email)) {
+            return res.status(400).json({ message: "Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
         }
 
         // Check if user exists (Email as Username)
@@ -299,7 +360,9 @@ const createStaf = async (req, res) => {
         const existingUser = await prisma.user.findFirst({
             where: {
                 OR: [
-                    { email },
+                    { mahasiswa: { email } },
+                    { dosen: { email } },
+                    { staf: { email } },
                     { username: stafUsername }
                 ]
             }
@@ -307,6 +370,11 @@ const createStaf = async (req, res) => {
 
         if (existingUser) {
             return res.status(400).json({ message: `Email atau username sudah terdaftar` });
+        }
+
+        const existingNip = await prisma.staf.findUnique({ where: { nip } });
+        if (existingNip) {
+            return res.status(400).json({ message: "NIP sudah terdaftar di profil staf" });
         }
 
         // Hash Password
@@ -317,7 +385,6 @@ const createStaf = async (req, res) => {
             const user = await prisma.user.create({
                 data: {
                     username: stafUsername,
-                    email,
                     password: hashedPassword,
                     role: 'staf',
                 }
@@ -326,7 +393,9 @@ const createStaf = async (req, res) => {
             const staf = await prisma.staf.create({
                 data: {
                     userId: user.id,
-                    nama
+                    nip,
+                    nama,
+                    email
                 }
             });
 
@@ -374,7 +443,7 @@ const getUsersByRole = async (req, res) => {
         const searchCondition = search ? {
             OR: [
                 { nama: { contains: search, mode: 'insensitive' } },
-                { user: { email: { contains: search, mode: 'insensitive' } } }
+                { email: { contains: search, mode: "insensitive" } }
             ]
         } : {};
 
@@ -391,7 +460,7 @@ const getUsersByRole = async (req, res) => {
                     where: mhsWhere,
                     skip,
                     take,
-                    include: { user: { select: { email: true, id: true, username: true } } },
+                    include: { user: { select: { id: true, username: true } } },
                     orderBy: { nama: 'asc' }
                 }),
                 prisma.mahasiswa.count({ where: mhsWhere })
@@ -406,7 +475,7 @@ const getUsersByRole = async (req, res) => {
                     where: dosenWhere,
                     skip,
                     take,
-                    include: { user: { select: { email: true, id: true, username: true } } },
+                    include: { user: { select: { id: true, username: true } } },
                     orderBy: { nama: 'asc' }
                 }),
                 prisma.dosen.count({ where: dosenWhere })
@@ -417,7 +486,7 @@ const getUsersByRole = async (req, res) => {
                     where: searchCondition,
                     skip,
                     take,
-                    include: { user: { select: { email: true, id: true, username: true } } },
+                    include: { user: { select: { id: true, username: true } } },
                     orderBy: { nama: 'asc' }
                 }),
                 prisma.staf.count({ where: searchCondition })
@@ -427,8 +496,7 @@ const getUsersByRole = async (req, res) => {
             const userWhere = { role: lowerRole };
             if (search) {
                 userWhere.OR = [
-                    { username: { contains: search, mode: 'insensitive' } },
-                    { email: { contains: search, mode: 'insensitive' } }
+                    { username: { contains: search, mode: 'insensitive' } }
                 ];
             }
             [users, total] = await Promise.all([
@@ -436,7 +504,7 @@ const getUsersByRole = async (req, res) => {
                     where: userWhere,
                     skip,
                     take,
-                    select: { id: true, email: true, username: true, role: true },
+                    select: { id: true, username: true, role: true },
                     orderBy: { username: 'asc' }
                 }),
                 prisma.user.count({ where: userWhere })
@@ -460,14 +528,56 @@ const getUsersByRole = async (req, res) => {
 
 const getMonitoringData = async (req, res) => {
     try {
+        const { search = '', statusBimbingan = '', page = '1', limit = '10' } = req.query;
+        const pageNumber = parseInt(page) || 1;
+        const limitNumber = parseInt(limit) || 10;
+        const skip = (pageNumber - 1) * limitNumber;
+
+        let whereCondition = {};
+        
+        if (statusBimbingan === 'SUDAH') {
+            whereCondition.bimbingan = { some: {} };
+        } else if (statusBimbingan === 'BELUM') {
+            whereCondition.bimbingan = { none: {} };
+        }
+
+        if (search) {
+            whereCondition.OR = [
+                { nama: { contains: search, mode: 'insensitive' } },
+                { nidn: { contains: search, mode: 'insensitive' } },
+                {
+                    bimbingan: {
+                        some: {
+                            mahasiswa: {
+                                OR: [
+                                    { nama: { contains: search, mode: 'insensitive' } },
+                                    { nim: { contains: search, mode: 'insensitive' } }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ];
+        }
+
+        const total = await prisma.dosen.count({ where: whereCondition });
+
         const dosens = await prisma.dosen.findMany({
+            where: whereCondition,
+            skip,
+            take: limitNumber,
+            orderBy: {
+                bimbingan: {
+                    _count: 'desc'
+                }
+            },
             select: {
-                id: true,
                 nama: true,
                 nidn: true,
                 jabatan: true,
+                email: true,
                 user: {
-                    select: { email: true }
+                    select: { id: true }
                 },
                 bimbingan: {
                     select: {
@@ -477,13 +587,17 @@ const getMonitoringData = async (req, res) => {
                         tanggal: true,
                         mahasiswa: {
                             select: {
-                                id: true,
                                 nama: true,
                                 nim: true,
                                 pengajuanJudul: {
                                     where: { status: 'APPROVED' },
                                     select: { judul: true },
                                     take: 1
+                                },
+                                sidang: {
+                                    orderBy: { createdAt: 'desc' },
+                                    take: 1,
+                                    select: { pengujiNidn: true }
                                 }
                             }
                         }
@@ -495,42 +609,77 @@ const getMonitoringData = async (req, res) => {
             }
         });
 
-        const data = dosens.map(dosen => {
-            // Group bimbingan by student to provide a list of unique students under each lecturer
+        // Fetch all dosens to map pengujiNidn to nama
+        const allDosens = await prisma.dosen.findMany({ select: { nidn: true, nama: true } });
+        const dosenMap = new Map(allDosens.map(d => [d.nidn, d.nama]));
+
+        let data = dosens.map(dosen => {
             const studentMap = new Map();
             
             dosen.bimbingan.forEach(b => {
                 const mhs = b.mahasiswa;
-                if (!studentMap.has(mhs.id)) {
-                    // Extract approved title if exists, otherwise fallback to latest bimbingan topic
+                if (!studentMap.has(mhs.nim)) {
                     const approvedJudul = mhs.pengajuanJudul && mhs.pengajuanJudul.length > 0 
                         ? mhs.pengajuanJudul[0].judul 
                         : null;
 
-                    studentMap.set(mhs.id, {
-                        id: mhs.id,
+                    const pengujiNidn = mhs.sidang && mhs.sidang.length > 0 ? mhs.sidang[0].pengujiNidn : null;
+                    const pengujiNama = pengujiNidn ? dosenMap.get(pengujiNidn) || pengujiNidn : null;
+
+                    studentMap.set(mhs.nim, {
+                        id: mhs.nim,
                         nama: mhs.nama,
                         nim: mhs.nim,
                         judulSkripsi: approvedJudul || b.topik || "Belum mengajukan judul",
                         status: b.status,
-                        lastBimbingan: b.tanggal
+                        lastBimbingan: b.tanggal,
+                        pengujiNidn: pengujiNidn,
+                        pengujiNama: pengujiNama
                     });
                 }
             });
 
+            let mahasiswaBimbingan = Array.from(studentMap.values());
+            
+            if (search) {
+                const searchLower = search.toLowerCase();
+                const dosenMatch = dosen.nama.toLowerCase().includes(searchLower) || dosen.nidn.toLowerCase().includes(searchLower);
+                if (!dosenMatch) {
+                    mahasiswaBimbingan = mahasiswaBimbingan.filter(m => 
+                        m.nama.toLowerCase().includes(searchLower) || m.nim.toLowerCase().includes(searchLower)
+                    );
+                }
+            }
+
             return {
-                id: dosen.id,
+                id: dosen.nidn,
                 nama: dosen.nama,
                 nidn: dosen.nidn,
-                email: dosen.user?.email,
+                email: dosen.email,
                 jabatan: dosen.jabatan,
-                totalBimbingan: dosen.bimbingan.length, // Total sessions
-                totalMahasiswa: studentMap.size,        // Unique students
-                mahasiswaBimbingan: Array.from(studentMap.values())
+                totalBimbingan: dosen.bimbingan.length,
+                totalMahasiswa: studentMap.size,
+                mahasiswaBimbingan: mahasiswaBimbingan
             };
         });
 
-        res.json({ data });
+        // Filter out empty dosens if they only matched through a student that was filtered out
+        // (This should theoretically not remove any Dosen based on our DB whereCondition)
+        if (search) {
+            data = data.filter(d => {
+                const dosenMatch = d.nama.toLowerCase().includes(search.toLowerCase()) || d.nidn.toLowerCase().includes(search.toLowerCase());
+                return dosenMatch || d.mahasiswaBimbingan.length > 0;
+            });
+        }
+
+        res.json({
+            data,
+            meta: {
+                total,
+                page: pageNumber,
+                totalPages: Math.ceil(total / limitNumber)
+            }
+        });
     } catch (error) {
          console.error("Error fetching monitoring data:", error);
          res.status(500).json({ message: "Internal Server Error" });
@@ -546,12 +695,19 @@ const updateUser = async (req, res) => {
         const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
         if (!user) return res.status(404).json({ message: "User not found" });
 
+        if (email && !isValidEmailDomain(email)) {
+            return res.status(400).json({ message: "Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
+        }
+
         const updateData = {};
-        if (email) updateData.email = email;
         // Only hash and update password if it's different from the current one (i.e. user changed it)
         // If it's the same (pre-filled hash), ignore it.
         if (password && password !== user.password) {
             updateData.password = await bcrypt.hash(password, 10);
+        }
+
+        if (role && role !== user.role) {
+            updateData.role = role;
         }
 
         // Transaction for atomic update
@@ -571,7 +727,8 @@ const updateUser = async (req, res) => {
                      data: {
                          nama: profileData.name || profileData.nama,
                          nim: profileData.nim,
-                         jurusan: profileData.jurusan,
+                         email: email || undefined,
+                         nomorTelepon: profileData.nomorTelepon,
                          tahunMasuk: profileData.tahunMasuk
                      }
                  });
@@ -581,14 +738,20 @@ const updateUser = async (req, res) => {
                      data: {
                          nama: profileData.name || profileData.nama,
                          nidn: profileData.nidn,
-                         jabatan: profileData.jabatan
+                         nip: profileData.nip,
+                         email: email || undefined,
+                         nomorTelepon: profileData.nomorTelepon,
+                         jabatan: profileData.jabatan,
+                         peminatan: profileData.peminatan
                      }
                  });
              } else if (user.role === 'staf') {
                  await prisma.staf.update({
                      where: { userId: parseInt(id) },
                      data: {
-                         nama: profileData.name || profileData.nama
+                         nama: profileData.name || profileData.nama,
+                         email: email || undefined,
+                         nomorTelepon: profileData.nomorTelepon
                      }
                  });
              }
@@ -626,19 +789,19 @@ const deleteUsersBatch = async (req, res) => {
                 let reason = "";
 
                 if (user.role === 'mahasiswa' && user.mahasiswa) {
-                    const mid = user.mahasiswa.id;
-                    const bCount = await prisma.bimbingan.count({ where: { mahasiswaId: mid } });
-                    const sCount = await prisma.sidang.count({ where: { mahasiswaId: mid } });
-                    const pCount = await prisma.penilaian.count({ where: { mahasiswaId: mid } });
-                    const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaId: mid } });
+                    const mid = user.mahasiswa.nim;
+                    const bCount = await prisma.bimbingan.count({ where: { mahasiswaNim: mid } });
+                    const sCount = await prisma.sidang.count({ where: { mahasiswaNim: mid } });
+                    const pCount = await prisma.penilaian.count({ where: { mahasiswaNim: mid } });
+                    const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaNim: mid } });
                     
                     if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
                 } else if (user.role === 'dosen' && user.dosen) {
-                    const did = user.dosen.id;
-                    const bCount = await prisma.bimbingan.count({ where: { dosenId: did } });
-                    const sCount = await prisma.sidang.count({ where: { dosenId: did } });
-                    const pCount = await prisma.penilaian.count({ where: { dosenId: did } });
-                    const jCount = await prisma.pengajuanJudul.count({ where: { dosenId: did } });
+                    const did = user.dosen.nidn;
+                    const bCount = await prisma.bimbingan.count({ where: { dosenNidn: did } });
+                    const sCount = await prisma.sidang.count({ where: { dosenNidn: did } });
+                    const pCount = await prisma.penilaian.count({ where: { dosenNidn: did } });
+                    const jCount = await prisma.pengajuanJudul.count({ where: { dosenNidn: did } });
                     
                     if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
                 }
@@ -703,19 +866,19 @@ const deleteUser = async (req, res) => {
         // Check for ANY active academic data
         let hasActiveData = false;
         if (user.role === 'mahasiswa' && user.mahasiswa) {
-            const mid = user.mahasiswa.id;
-            const bCount = await prisma.bimbingan.count({ where: { mahasiswaId: mid } });
-            const sCount = await prisma.sidang.count({ where: { mahasiswaId: mid } });
-            const pCount = await prisma.penilaian.count({ where: { mahasiswaId: mid } });
-            const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaId: mid } });
+            const mid = user.mahasiswa.nim;
+            const bCount = await prisma.bimbingan.count({ where: { mahasiswaNim: mid } });
+            const sCount = await prisma.sidang.count({ where: { mahasiswaNim: mid } });
+            const pCount = await prisma.penilaian.count({ where: { mahasiswaNim: mid } });
+            const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaNim: mid } });
             
             if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
         } else if (user.role === 'dosen' && user.dosen) {
-            const did = user.dosen.id;
-            const bCount = await prisma.bimbingan.count({ where: { dosenId: did } });
-            const sCount = await prisma.sidang.count({ where: { dosenId: did } });
-            const pCount = await prisma.penilaian.count({ where: { dosenId: did } });
-            const jCount = await prisma.pengajuanJudul.count({ where: { dosenId: did } });
+            const did = user.dosen.nidn;
+            const bCount = await prisma.bimbingan.count({ where: { dosenNidn: did } });
+            const sCount = await prisma.sidang.count({ where: { dosenNidn: did } });
+            const pCount = await prisma.penilaian.count({ where: { dosenNidn: did } });
+            const jCount = await prisma.pengajuanJudul.count({ where: { dosenNidn: did } });
             
             if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
         }
@@ -740,21 +903,21 @@ const deleteUser = async (req, res) => {
 
             // 2. Cleanup role-specific data
             if (user.role === 'mahasiswa' && user.mahasiswa) {
-                const mid = user.mahasiswa.id;
-                await tx.bimbingan.deleteMany({ where: { mahasiswaId: mid } });
-                await tx.sidang.deleteMany({ where: { mahasiswaId: mid } });
-                await tx.penilaian.deleteMany({ where: { mahasiswaId: mid } });
-                await tx.pengajuanJudul.deleteMany({ where: { mahasiswaId: mid } });
-                await tx.acaraReadStatus.deleteMany({ where: { mahasiswaId: mid } });
+                const mid = user.mahasiswa.nim;
+                await tx.bimbingan.deleteMany({ where: { mahasiswaNim: mid } });
+                await tx.sidang.deleteMany({ where: { mahasiswaNim: mid } });
+                await tx.penilaian.deleteMany({ where: { mahasiswaNim: mid } });
+                await tx.pengajuanJudul.deleteMany({ where: { mahasiswaNim: mid } });
+                await tx.acaraReadStatus.deleteMany({ where: { mahasiswaNim: mid } });
                 
-                await tx.mahasiswa.delete({ where: { id: mid } });
+                await tx.mahasiswa.delete({ where: { nim: mid } });
             } else if (user.role === 'dosen' && user.dosen) {
-                const did = user.dosen.id;
+                const did = user.dosen.nidn;
                 
                 // Note: Acara might have related comments and read statuses
                 // but those are mostly cascaded or cleaned above if related to students
                 // We should delete Acara specifically for Dosen
-                const acaraIds = await tx.acara.findMany({ where: { dosenId: did }, select: { id: true } });
+                const acaraIds = await tx.acara.findMany({ where: { dosenNidn: did }, select: { id: true } });
                 const ids = acaraIds.map(a => a.id);
                 if (ids.length > 0) {
                     await tx.acaraComment.deleteMany({ where: { acaraId: { in: ids } } });
@@ -762,14 +925,14 @@ const deleteUser = async (req, res) => {
                     await tx.acara.deleteMany({ where: { id: { in: ids } } });
                 }
 
-                await tx.bimbingan.deleteMany({ where: { dosenId: did } });
-                await tx.sidang.deleteMany({ where: { dosenId: did } });
-                await tx.penilaian.deleteMany({ where: { dosenId: did } });
-                await tx.pengajuanJudul.deleteMany({ where: { dosenId: did } });
+                await tx.bimbingan.deleteMany({ where: { dosenNidn: did } });
+                await tx.sidang.deleteMany({ where: { dosenNidn: did } });
+                await tx.penilaian.deleteMany({ where: { dosenNidn: did } });
+                await tx.pengajuanJudul.deleteMany({ where: { dosenNidn: did } });
                 
-                await tx.dosen.delete({ where: { id: did } });
+                await tx.dosen.delete({ where: { nidn: did } });
             } else if (user.role === 'staf' && user.staf) {
-                await tx.staf.delete({ where: { id: user.staf.id } });
+                await tx.staf.delete({ where: { nip: user.staf.nip } });
             }
 
             // 3. Delete the base User record
@@ -801,7 +964,7 @@ const getUserById = async (req, res) => {
         // Flatten the structure for easier frontend consumption
         let userData = {
             id: user.id,
-            email: user.email,
+            email: user.mahasiswa?.email || user.dosen?.email || user.staf?.email || "-",
             role: user.role,
             password: user.password, // Include password hash so frontend can display it if needed
             ... (user.mahasiswa ? user.mahasiswa : {}),
@@ -861,11 +1024,11 @@ const deleteAllMahasiswa = async (req, res) => {
         for (const user of allStudents) {
             let hasActiveData = false;
             if (user.mahasiswa) {
-                const mid = user.mahasiswa.id;
-                const bCount = await prisma.bimbingan.count({ where: { mahasiswaId: mid } });
-                const sCount = await prisma.sidang.count({ where: { mahasiswaId: mid } });
-                const pCount = await prisma.penilaian.count({ where: { mahasiswaId: mid } });
-                const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaId: mid } });
+                const mid = user.mahasiswa.nim;
+                const bCount = await prisma.bimbingan.count({ where: { mahasiswaNim: mid } });
+                const sCount = await prisma.sidang.count({ where: { mahasiswaNim: mid } });
+                const pCount = await prisma.penilaian.count({ where: { mahasiswaNim: mid } });
+                const jCount = await prisma.pengajuanJudul.count({ where: { mahasiswaNim: mid } });
                 
                 if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
             }
@@ -890,9 +1053,9 @@ const deleteAllMahasiswa = async (req, res) => {
                     await tx.acaraComment.deleteMany({ where: { userId } });
 
                     if (user.mahasiswa) {
-                        const mid = user.mahasiswa.id;
-                        await tx.acaraReadStatus.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.mahasiswa.delete({ where: { id: mid } });
+                        const mid = user.mahasiswa.nim;
+                        await tx.acaraReadStatus.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.mahasiswa.delete({ where: { nim: mid } });
                     }
                     await tx.user.delete({ where: { id: userId } });
                 }
@@ -930,13 +1093,13 @@ const deleteAllMahasiswa = async (req, res) => {
                     await tx.acaraComment.deleteMany({ where: { userId } });
 
                     if (user.mahasiswa) {
-                        const mid = user.mahasiswa.id;
-                        await tx.bimbingan.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.sidang.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.penilaian.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.pengajuanJudul.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.acaraReadStatus.deleteMany({ where: { mahasiswaId: mid } });
-                        await tx.mahasiswa.delete({ where: { id: mid } });
+                        const mid = user.mahasiswa.nim;
+                        await tx.bimbingan.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.sidang.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.penilaian.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.pengajuanJudul.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.acaraReadStatus.deleteMany({ where: { mahasiswaNim: mid } });
+                        await tx.mahasiswa.delete({ where: { nim: mid } });
                     }
                     await tx.user.delete({ where: { id: userId } });
                 }
@@ -969,11 +1132,11 @@ const deleteAllDosen = async (req, res) => {
         for (const user of allLecturers) {
             let hasActiveData = false;
             if (user.dosen) {
-                const did = user.dosen.id;
-                const bCount = await prisma.bimbingan.count({ where: { dosenId: did } });
-                const sCount = await prisma.sidang.count({ where: { dosenId: did } });
-                const pCount = await prisma.penilaian.count({ where: { dosenId: did } });
-                const jCount = await prisma.pengajuanJudul.count({ where: { dosenId: did } });
+                const did = user.dosen.nidn;
+                const bCount = await prisma.bimbingan.count({ where: { dosenNidn: did } });
+                const sCount = await prisma.sidang.count({ where: { dosenNidn: did } });
+                const pCount = await prisma.penilaian.count({ where: { dosenNidn: did } });
+                const jCount = await prisma.pengajuanJudul.count({ where: { dosenNidn: did } });
                 
                 if (bCount > 0 || sCount > 0 || pCount > 0 || jCount > 0) hasActiveData = true;
             }
@@ -996,15 +1159,15 @@ const deleteAllDosen = async (req, res) => {
                     await tx.acaraComment.deleteMany({ where: { userId } });
 
                     if (user.dosen) {
-                        const did = user.dosen.id;
-                        const acaraIds = await tx.acara.findMany({ where: { dosenId: did }, select: { id: true } });
+                        const did = user.dosen.nidn;
+                        const acaraIds = await tx.acara.findMany({ where: { dosenNidn: did }, select: { id: true } });
                         const ids = acaraIds.map(a => a.id);
                         if (ids.length > 0) {
                             await tx.acaraComment.deleteMany({ where: { acaraId: { in: ids } } });
                             await tx.acaraReadStatus.deleteMany({ where: { acaraId: { in: ids } } });
                             await tx.acara.deleteMany({ where: { id: { in: ids } } });
                         }
-                        await tx.dosen.delete({ where: { id: did } });
+                        await tx.dosen.delete({ where: { nidn: did } });
                     }
                     await tx.user.delete({ where: { id: userId } });
                 }
@@ -1039,9 +1202,9 @@ const deleteAllDosen = async (req, res) => {
                     await tx.acaraComment.deleteMany({ where: { userId } });
 
                     if (user.dosen) {
-                        const did = user.dosen.id;
+                        const did = user.dosen.nidn;
                         
-                        const acaraIds = await tx.acara.findMany({ where: { dosenId: did }, select: { id: true } });
+                        const acaraIds = await tx.acara.findMany({ where: { dosenNidn: did }, select: { id: true } });
                         const ids = acaraIds.map(a => a.id);
                         if (ids.length > 0) {
                             await tx.acaraComment.deleteMany({ where: { acaraId: { in: ids } } });
@@ -1049,11 +1212,11 @@ const deleteAllDosen = async (req, res) => {
                             await tx.acara.deleteMany({ where: { id: { in: ids } } });
                         }
 
-                        await tx.bimbingan.deleteMany({ where: { dosenId: did } });
-                        await tx.sidang.deleteMany({ where: { dosenId: did } });
-                        await tx.penilaian.deleteMany({ where: { dosenId: did } });
-                        await tx.pengajuanJudul.deleteMany({ where: { dosenId: did } });
-                        await tx.dosen.delete({ where: { id: did } });
+                        await tx.bimbingan.deleteMany({ where: { dosenNidn: did } });
+                        await tx.sidang.deleteMany({ where: { dosenNidn: did } });
+                        await tx.penilaian.deleteMany({ where: { dosenNidn: did } });
+                        await tx.pengajuanJudul.deleteMany({ where: { dosenNidn: did } });
+                        await tx.dosen.delete({ where: { nidn: did } });
                     }
                     await tx.user.delete({ where: { id: userId } });
                 }
@@ -1070,9 +1233,31 @@ const deleteAllDosen = async (req, res) => {
 
 const getMahasiswaSudahPengajuan = async (req, res) => {
     try {
+        const { search } = req.query;
+        let whereCondition = {};
+        
+        if (search) {
+            whereCondition = {
+                mahasiswa: {
+                    OR: [
+                        { nama: { contains: search, mode: 'insensitive' } },
+                        { nim: { contains: search, mode: 'insensitive' } }
+                    ]
+                }
+            };
+        }
+
         const pengajuanList = await prisma.pengajuanJudul.findMany({
+            where: whereCondition,
             include: {
-                mahasiswa: true,
+                mahasiswa: {
+                    include: {
+                        logbook: {
+                            orderBy: { tanggalPukul: 'desc' }
+                        },
+                        tempatKP: true
+                    }
+                },
                 dosen: true
             },
             orderBy: {
@@ -1089,15 +1274,25 @@ const getMahasiswaSudahPengajuan = async (req, res) => {
 
 const getMahasiswaTanpaPengajuan = async (req, res) => {
     try {
+        const { search } = req.query;
+        let whereCondition = {
+            pengajuanJudul: {
+                none: {}
+            }
+        };
+
+        if (search) {
+            whereCondition.OR = [
+                { nama: { contains: search, mode: 'insensitive' } },
+                { nim: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
         const students = await prisma.mahasiswa.findMany({
-            where: {
-                pengajuanJudul: {
-                    none: {}
-                }
-            },
+            where: whereCondition,
             include: {
                 user: {
-                    select: { email: true }
+                    select: { id: true }
                 }
             }
         });

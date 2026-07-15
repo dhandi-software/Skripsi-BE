@@ -44,7 +44,12 @@ const login = async (req, res) => {
         });
 
         // 4. Return Response
-        const profileName = user.mahasiswa?.nama || user.dosen?.nama || user.username;
+        let profileName = user.username;
+        if (user.role === 'admin') {
+            profileName = 'Administrator';
+        } else {
+            profileName = user.mahasiswa?.nama || user.dosen?.nama || user.staf?.nama || user.username;
+        }
 
         return res.status(200).json({
             message: 'Login successful',
@@ -54,8 +59,9 @@ const login = async (req, res) => {
                 username: user.username,
                 name: profileName,
                 role: user.role,
-                mahasiswaId: user.mahasiswa?.id,
-                dosenId: user.dosen?.id,
+                mahasiswaNim: user.mahasiswa?.nim,
+                tahunMasuk: user.mahasiswa?.tahunMasuk,
+                dosenNidn: user.dosen?.nip,
                 jabatan: user.dosen?.jabatan
             }
         });
@@ -102,4 +108,48 @@ const changePassword = async (req, res) => {
     }
 };
 
-module.exports = { login, logout, changePassword };
+const checkEmail = async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+
+    try {
+        const user = await findUserByIdentifier(email);
+        if (!user) {
+            return res.status(404).json({ message: 'Email tidak ditemukan di dalam sistem.' });
+        }
+        
+        return res.status(200).json({
+            message: 'Email valid',
+            userId: user.id,
+            role: user.role
+        });
+    } catch (error) {
+        console.error('Check email error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    const { userId, newPassword } = req.body;
+
+    if (!userId || !newPassword) {
+        return res.status(400).json({ message: 'User ID and new password are required' });
+    }
+
+    try {
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id: parseInt(userId) },
+            data: { password: hashedPassword }
+        });
+
+        return res.status(200).json({ message: 'Password berhasil direset. Silakan login dengan password baru Anda.' });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+module.exports = { login, logout, changePassword, checkEmail, resetPassword };

@@ -121,6 +121,24 @@ Semua REST API menggunakan Base URL: `http://localhost:5002/api`
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **POST** | `/api/auth/login` | Semua (Public) | Login user & dapatkan JWT | `{ "username": "...", "password": "..." }` | `{ "token": "jwt...", "user": { "role": "..." } }` |
 | **POST** | `/api/auth/change-password` | Semua | Mengganti password user | `{ "oldPassword": "...", "newPassword": "..." }` | `{ "message": "Password updated" }` |
+| **POST** | `/api/auth/check-email` | Semua (Public) | Mengecek keberadaan email untuk lupa password | `{ "email": "..." }` | `{ "userId": 1, "role": "mahasiswa" }` |
+| **POST** | `/api/auth/reset-password` | Semua (Public) | Mereset password baru | `{ "userId": 1, "newPassword": "..." }` | `{ "message": "Password berhasil direset" }` |
+
+---
+
+### 💬 2. Obrolan / Live Chat (`/chat`)
+
+| Method | Endpoint | Aktor / Akses | Deskripsi | Request Body / Query |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/api/chat/contacts/:userId` | Semua | Mendapatkan daftar kontak chat & grup | - |
+| **GET** | `/api/chat/history/:userId/:otherUserId` | Semua | Riwayat obrolan (dengan user/grup/publik) | - |
+| **GET** | `/api/chat/unread/:userId` | Semua | Total jumlah pesan belum terbaca | - |
+| **POST** | `/api/chat/upload` | Semua | Mengunggah lampiran dokumen/gambar (Maks 5MB) | `FormData: { file: [File] }` |
+| **GET** | `/api/chat/public/members` | Semua | Daftar pengguna di ruang publik | - |
+| **POST** | `/api/chat/public/kick` | Admin/Staf | Mengeluarkan user dari ruang publik | `{ "userId": 5 }` |
+| **POST** | `/api/chat/public/unban` | Admin/Staf | Mengembalikan user ke ruang publik | `{ "userId": 5 }` |
+| **GET** | `/api/chat/groups/:userId` | Semua | Daftar grup chat pengguna | - |
+| **POST** | `/api/chat/groups/create` | Dosen | Membuat grup bimbingan baru | `{ "name": "Bimbingan...", "adminId": 2, "memberIds": [1, 3] }` |
 
 ---
 
@@ -242,5 +260,47 @@ Proses komunikasi real-time terintegrasi secara hibrida:
     - `join` (Akses: Semua) - Payload `{ userId: number }` (Join ke room chat personal).
     - `send_message` (Akses: Semua) - Payload `{ senderId: number, receiverId: number, content: string, attachmentUrl?: string }` (Kirim pesan baru).
     - `delete_message` (Akses: Semua) - Payload `{ messageId: number }` (Tarik pesan global / delete for everyone).
+
+---
+
+---
+
+### 📅 10. Jadwal KP & Sidang (`/jadwal-kp`)
+
+| Method | Endpoint | Aktor / Akses | Deskripsi | Request Body / Query |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/api/jadwal-kp` | Semua | Mengambil seluruh riwayat jadwal KP | - |
+| **GET** | `/api/jadwal-kp/active` | Semua | Mengambil jadwal terdekat yang masih aktif | `?tipe=PENGARAHAN_KP` *(Query Opsional)* |
+| **POST** | `/api/jadwal-kp` | Staf, Admin | Membuat jadwal KP baru | `{ "tipe": "PENGARAHAN_KP", "judul": "...", "deskripsi": "...", "tanggal": "2026-07-01", "waktu": "10:00" }` |
+| **PUT** | `/api/jadwal-kp/:id` | Staf, Admin | Memperbarui jadwal KP yang sudah ada | `{ "judul": "...", "tanggal": "...", "waktu": "..." }` |
+| **DELETE** | `/api/jadwal-kp/:id` | Staf, Admin | Menghapus jadwal KP | - |
+
+---
+
+## 📝 Penilaian Evaluasi Kerja Praktik (Grading Rules & Access Boundaries)
+
+Modul ini mengelola penilaian akhir kerja praktik mahasiswa berdasarkan evaluasi dari Dosen Pembimbing (P1) dan Dosen Penguji (P2).
+
+### 👥 Peran & Batasan Akses (Roles & Permissions)
+1. **Dosen Pembimbing (P1)**:
+   - Menginput nilai komponen bimbingan (K1, K2, K3) dengan pembobotan **35%, 30%, 35%**.
+   - Input nilai Dosen Penguji (P2) dikunci (read-only) untuk mencegah manipulasi.
+2. **Dosen Penguji (P2)**:
+   - Menginput nilai komponen ujian (K1, K2, K3) dengan pembobotan **35%, 30%, 35%**.
+   - Input nilai Dosen Pembimbing (P1) dikunci (read-only) untuk mencegah manipulasi.
+3. **Admin / Staf**:
+   - Hanya memiliki wewenang untuk menugaskan Dosen Penguji (bulk examiner assignment).
+   - Seluruh tab penilaian pribadi ("Bimbingan Saya", "Diuji Oleh Saya") disembunyikan untuk Admin.
+   - Form penilaian bersifat **read-only** (tidak dapat mengisi nilai P1 maupun P2).
+
+### 📊 Skala Konversi Huruf Mutu (Grading Scale)
+Rata-rata akhir dihitung dari gabungan total P1 dan P2 dibagi 2, lalu dikonversi dengan skala berikut:
+*   `Nilai >= 80` ➔ **A**
+*   `Nilai >= 70` ➔ **B**
+*   `Nilai >= 60` ➔ **B-**
+*   `Nilai >= 50` ➔ **C**
+*   `Nilai >= 40` ➔ **C-**
+*   `Nilai < 40` ➔ **D**
+
 
 

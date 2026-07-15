@@ -9,7 +9,7 @@ const fs = require('fs');
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         const dir = path.join(__dirname, '../../uploads/bimbingan');
-        if (!fs.existsSync(dir)){
+        if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
         cb(null, dir);
@@ -23,7 +23,7 @@ const upload = multer({
     storage: storage,
     fileFilter: (req, file, cb) => {
         if (
-            file.mimetype === 'application/msword' || 
+            file.mimetype === 'application/msword' ||
             file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             file.mimetype === 'application/pdf'
         ) {
@@ -55,6 +55,7 @@ router.post('/upload-dosen/:id', authenticateToken, upload.single('file'), bimbi
 router.get('/history/:mahasiswaId/:topik', authenticateToken, bimbinganController.getBimbinganHistory);
 router.post('/annotations', authenticateToken, bimbinganController.createAnnotation);
 router.get('/annotations/:bimbinganId', authenticateToken, bimbinganController.getAnnotations);
+router.get('/annotations/previous/:bimbinganId', authenticateToken, bimbinganController.getPreviousAnnotations);
 router.delete('/annotations/:id', authenticateToken, bimbinganController.deleteAnnotation);
 
 router.get('/all-prodi', authenticateToken, bimbinganController.getAllProdiBimbingan);

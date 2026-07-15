@@ -41,13 +41,13 @@ exports.getChatHistory = async (req, res) => {
                 createdAt: 'asc'
             },
             include: {
-                sender: { select: { username: true, role: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } }, staf: { select: { nama: true } } } },
-                receiver: { select: { username: true, role: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } }, staf: { select: { nama: true } } } },
+                sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true, photo: true } }, dosen: { select: { nama: true, photo: true } }, staf: { select: { nama: true, photo: true } } } },
+                receiver: { select: { username: true, role: true, mahasiswa: { select: { nama: true, photo: true } }, dosen: { select: { nama: true, photo: true } }, staf: { select: { nama: true, photo: true } } } },
                 parent: {
                     select: {
                         id: true,
                         content: true,
-                        sender: { select: { username: true, photo: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } }, staf: { select: { nama: true } } } }
+                        sender: { select: { username: true, mahasiswa: { select: { nama: true, photo: true } }, dosen: { select: { nama: true, photo: true } }, staf: { select: { nama: true, photo: true } } } }
                     }
                 }
             }
@@ -83,11 +83,9 @@ exports.getContacts = async (req, res) => {
                 id: true,
                 username: true,
                 role: true,
-                email: true,
-                photo: true,
-                mahasiswa: { select: { nama: true } },
-                dosen:     { select: { nama: true } },
-                staf:      { select: { nama: true } }
+                mahasiswa: { select: { nama: true, email: true, photo: true } },
+                dosen:     { select: { nama: true, email: true, photo: true } },
+                staf:      { select: { nama: true, email: true, photo: true } }
             }
         });
 
@@ -95,8 +93,8 @@ exports.getContacts = async (req, res) => {
             id: u.id,
             username: u.mahasiswa?.nama || u.dosen?.nama || u.staf?.nama || u.username,
             role: u.role,
-            email: u.email,
-            photo: u.photo
+            email: u.mahasiswa?.email || u.dosen?.email || u.staf?.email,
+            photo: u.mahasiswa?.photo || u.dosen?.photo || u.staf?.photo
         }));
 
         // Fetch user's group rooms
@@ -110,10 +108,10 @@ exports.getContacts = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
-                                photo: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } },
-                                staf: { select: { nama: true } }
+                                
+                                mahasiswa: { select: { nama: true, photo: true } },
+                                dosen: { select: { nama: true, photo: true } },
+                                staf: { select: { nama: true, photo: true } }
                             }
                         }
                     }
@@ -238,11 +236,11 @@ exports.getPublicMembers = async (req, res) => {
                 id: true,
                 username: true,
                 role: true,
-                photo: true,
+                
                 isBannedFromPublic: true,
-                mahasiswa: { select: { nama: true } },
-                dosen: { select: { nama: true } },
-                staf: { select: { nama: true } }
+                mahasiswa: { select: { nama: true, photo: true } },
+                dosen: { select: { nama: true, photo: true } },
+                staf: { select: { nama: true, photo: true } }
             },
             orderBy: { username: 'asc' }
         });

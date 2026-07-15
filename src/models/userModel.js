@@ -8,13 +8,16 @@ const findUserByIdentifier = async (identifier) => {
         where: {
             OR: [
                 { username: identifier },
-                { email: identifier },
+                { mahasiswa: { email: identifier } },
+                { dosen: { email: identifier } },
+                { staf: { email: identifier } },
                 { username: `D-${identifier}` } // Try with Dosen prefix for NIDN-based login
             ]
         },
         include: {
             mahasiswa: true,
-            dosen: true
+            dosen: true,
+            staf: true
         }
     });
 };
@@ -27,7 +30,6 @@ const createUser = async (userData) => {
         data: {
             username,
             password: hashedPassword,
-            email,
             role,
             // Create related profile based on role
             ...(role === 'MAHASISWA' && {
@@ -35,7 +37,7 @@ const createUser = async (userData) => {
                     create: {
                         nama: name,
                         nim: otherDetails.nim,
-                        jurusan: otherDetails.jurusan,
+                        email: email,
                         userId: undefined // Prisma handles relation
                     }
                 }
@@ -46,6 +48,16 @@ const createUser = async (userData) => {
                         nama: name,
                         nip: otherDetails.nip,
                         jabatan: otherDetails.jabatan,
+                        email: email,
+                        userId: undefined
+                    }
+                }
+            }),
+            ...(role === 'STAF' && {
+                staf: {
+                    create: {
+                        nama: name,
+                        email: email,
                         userId: undefined
                     }
                 }

@@ -2,58 +2,74 @@ const prisma = require('../prisma');
 
 const applyForSidang = async (req, res) => {
     try {
-        const { mahasiswaId, judul, tanggalSidang, waktuSidang, lokasi } = req.body;
-        const isStaf = req.user.role.toUpperCase() === 'STAF';
-        
-        let dosenId;
-        let finalJudul = judul;
+        const { judul } = req.body;
+        const file = req.file;
+        const isMahasiswa = req.user.role.toUpperCase() === 'MAHASISWA';
+
+        if (!isMahasiswa) {
+            return res.status(403).json({ message: "Hanya mahasiswa yang dapat mengajukan sidang." });
+        }
+
+        const mahasiswa = await prisma.mahasiswa.findUnique({
+            where: { userId: req.user.id }
+        });
+
+        if (!mahasiswa) return res.status(404).json({ message: "Mahasiswa profile not found" });
+
+        // Check active JadwalKp
+        const now = new Date();
+        const activeJadwal = await prisma.jadwalKp.findFirst({
+            where: {
+                tipe: 'PENGARAHAN_SIDANG',
+                tanggal: { gte: now }
+            }
+        });
+
+        if (!activeJadwal) {
+            return res.status(400).json({ message: "Pendaftaran sidang belum dibuka atau sudah ditutup." });
+        }
+
+        if (!file) {
+            return res.status(400).json({ message: "Laporan akhir harus diunggah." });
+        }
 
         // Find supervisor and title from student's approved topic
         const approvedJudul = await prisma.pengajuanJudul.findFirst({
             where: { 
-                mahasiswaId: parseInt(mahasiswaId),
+                mahasiswaNim: mahasiswa.nim,
                 status: 'APPROVED'
             }
         });
 
-        if (isStaf) {
-            if (!approvedJudul) return res.status(404).json({ message: "Supervisor not found for this student. Ensure judul is approved." });
-            dosenId = approvedJudul.dosenId;
-        } else {
-            const dosen = await prisma.dosen.findUnique({
-                where: { userId: req.user.id }
-            });
-            if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
-            dosenId = dosen.id;
-        }
+        if (!approvedJudul) return res.status(400).json({ message: "Pengajuan judul belum disetujui, tidak bisa mendaftar sidang." });
 
-        // Auto-fill title if empty or generic
-        if (!finalJudul || finalJudul.toLowerCase() === 'sdfsdf') {
-            if (approvedJudul) {
-                finalJudul = approvedJudul.judul;
-            }
+        let finalJudul = judul;
+        if (!finalJudul || finalJudul.trim() === '') {
+            finalJudul = approvedJudul.judul;
         }
 
         // Check if student already has a sidang record
         const existing = await prisma.sidang.findFirst({
-            where: { mahasiswaId: parseInt(mahasiswaId) }
+            where: { mahasiswaNim: mahasiswa.nim },
+            orderBy: { createdAt: 'desc' }
         });
 
         if (existing && existing.status !== 'DITOLAK') {
-            return res.status(400).json({ message: "Mahasiswa ini sudah terdaftar dalam proses persidangan." });
+            return res.status(400).json({ message: "Anda sudah terdaftar dalam proses persidangan." });
         }
+
+        // If rejected, just create a new record or update. We will create a new one to keep history, or we can update.
+        // Actually creating a new one is fine, as the frontend will just show the latest one.
 
         const sidang = await prisma.sidang.create({
             data: {
-                mahasiswaId: parseInt(mahasiswaId),
-                dosenId: dosenId,
+                mahasiswaNim: mahasiswa.nim,
+                dosenNidn: approvedJudul.dosenNidn,
                 judul: finalJudul,
-                tanggalSidang: tanggalSidang ? new Date(tanggalSidang) : null,
-                waktuSidang,
-                lokasi,
-                status: isStaf ? 'MENUNGGU_PERSETUJUAN_PEMBIMBING' : 'MENUNGGU_VERIFIKASI_KAPRODI',
-                pembimbingApproved: !isStaf, // If staff applies, needs supervisor ACC
-                mahasiswaSeen: false
+                laporanUrl: `/uploads/${file.filename}`, // multer saves to uploads dir
+                status: 'MENUNGGU_PENJADWALAN_KOORDINATOR',
+                pembimbingApproved: true, // Auto-approve or skip
+                mahasiswaSeen: true
             }
         });
 
@@ -67,8 +83,8 @@ const applyForSidang = async (req, res) => {
 const approveByPembimbing = async (req, res) => {
     try {
         const { id } = req.params;
+        const { tanggalSidang, waktuSidang, lokasi, isRejected } = req.body;
 
-        // Fetch current sidang to check if schedule already exists
         const currentSidang = await prisma.sidang.findUnique({
             where: { id: parseInt(id) }
         });
@@ -77,16 +93,26 @@ const approveByPembimbing = async (req, res) => {
             return res.status(404).json({ message: "Data sidang tidak ditemukan." });
         }
 
-        // If schedule is already provided by staff, jump to TERJADWAL
-        const isScheduled = currentSidang.tanggalSidang && currentSidang.waktuSidang && currentSidang.lokasi;
-        
+        if (isRejected) {
+             const sidang = await prisma.sidang.update({
+                 where: { id: parseInt(id) },
+                 data: {
+                     status: 'DITOLAK',
+                     mahasiswaSeen: false
+                 }
+             });
+             return res.json(sidang);
+        }
+
         const sidang = await prisma.sidang.update({
             where: { id: parseInt(id) },
             data: {
                 pembimbingApproved: true,
-                prodiApproved: isScheduled ? true : currentSidang.prodiApproved,
-                status: isScheduled ? 'TERJADWAL' : 'MENUNGGU_PENJADWALAN_PRODI',
-                mahasiswaSeen: false // Signal update to student
+                tanggalSidang: tanggalSidang ? new Date(tanggalSidang) : null,
+                waktuSidang,
+                lokasi,
+                status: tanggalSidang ? 'TERJADWAL' : 'MENUNGGU_PENJADWALAN_KOORDINATOR',
+                mahasiswaSeen: false
             }
         });
         res.json(sidang);
@@ -109,18 +135,17 @@ const scheduleByProdi = async (req, res) => {
             where: { userId: req.user.id }
         });
         
-        const isOfficialApproved = req.user.role.toUpperCase() === 'STAF' || (userDosen?.jabatan && (
+        const isOfficialApproved = userDosen?.jabatan && (
             userDosen.jabatan.toLowerCase().includes('prodi') || 
+            userDosen.jabatan.toLowerCase().includes('koordinator kp') ||
             userDosen.jabatan.toLowerCase().includes('kepala program studi')
-        ));
+        );
 
-        // If STAFF schedules, and it was not approved by pembimbing yet, keep/set to MENUNGGU_PERSETUJUAN_PEMBIMBING
-        // So the supervisor can approve the schedule set by staff.
-        let newStatus = isOfficialApproved ? 'TERJADWAL' : 'MENUNGGU_KONFIRMASI_JADWAL_KAPRODI';
-        
-        if (req.user.role.toUpperCase() === 'STAF' && !existingSidang.pembimbingApproved) {
-            newStatus = 'MENUNGGU_PERSETUJUAN_PEMBIMBING';
+        if (req.user.role.toUpperCase() === 'STAF' || !isOfficialApproved) {
+            return res.status(403).json({ message: "Hanya Dosen Pembimbing atau Koordinator KP yang dapat menjadwalkan sidang." });
         }
+
+        let newStatus = 'TERJADWAL';
 
         const sidang = await prisma.sidang.update({
             where: { id: parseInt(id) },
@@ -128,8 +153,7 @@ const scheduleByProdi = async (req, res) => {
                 tanggalSidang: tanggalSidang ? new Date(tanggalSidang) : null,
                 waktuSidang,
                 lokasi,
-                pengujiId: pengujiId ? parseInt(pengujiId) : null,
-                prodiApproved: true,
+                pengujiNidn: pengujiId ? parseInt(pengujiId) : null,
                 status: newStatus,
                 catatan,
                 mahasiswaSeen: false // Signal update to student
@@ -172,8 +196,8 @@ const getSidangDosen = async (req, res) => {
                 sidangs = await prisma.sidang.findMany({
                     where: {
                         OR: [
-                            { dosenId: dosen.id },
-                            { pengujiId: dosen.id }
+                            { dosenNidn: dosen.nidn },
+                            { pengujiNidn: dosen.nidn }
                         ]
                     },
                     include: {
@@ -192,22 +216,22 @@ const getSidangDosen = async (req, res) => {
     }
 };
 
-const prodiApprove = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const sidang = await prisma.sidang.update({
-            where: { id: parseInt(id) },
-            data: {
-                prodiApproved: true,
-                status: 'MENUNGGU_KONFIRMASI_JADWAL_KAPRODI'
-            }
-        });
-        res.json(sidang);
-    } catch (error) {
-        console.error("Prodi Approve Error:", error);
-        res.status(500).json({ error: error.message });
-    }
-};
+// const prodiApprove = async (req, res) => {
+//     try {
+//         const { id } = req.params;
+//         const sidang = await prisma.sidang.update({
+//             where: { id: parseInt(id) },
+//             data: {
+//                 prodiApproved: true,
+//                 status: 'TERJADWAL'
+//             }
+//         });
+//         res.json(sidang);
+//     } catch (error) {
+//         console.error("Prodi Approve Error:", error);
+//         res.status(500).json({ error: error.message });
+//     }
+// };
 
 const verifyByKaprodi = async (req, res) => {
     try {
@@ -277,7 +301,7 @@ const getSidangMahasiswa = async (req, res) => {
         if (!mahasiswa) return res.status(404).json({ message: "Mahasiswa profile not found" });
 
         const sidangs = await prisma.sidang.findMany({
-            where: { mahasiswaId: mahasiswa.id },
+            where: { mahasiswaNim: mahasiswa.nim },
             include: {
                 dosen: true, // Pembimbing
                 mahasiswa: true
@@ -298,7 +322,7 @@ module.exports = {
     scheduleByProdi,
     getSidangDosen,
     getSidangMahasiswa,
-    prodiApprove,
+    // prodiApprove,
     verifyByKaprodi,
     confirmScheduleByKaprodi,
     markAsSeenByMahasiswa,

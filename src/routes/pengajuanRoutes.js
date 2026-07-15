@@ -45,6 +45,11 @@ router.put('/profile', authenticateToken, upload.single('photo'), pengajuanContr
 router.put('/profile/dosen', authenticateToken, upload.single('photo'), pengajuanController.updateDosenProfile);
 router.get('/profile/staf', authenticateToken, pengajuanController.getStafProfile);
 router.put('/profile/staf', authenticateToken, upload.single('photo'), pengajuanController.updateStafProfile);
+
+// Public profile endpoint (must be before /:filename)
+router.get('/profile/public/:id', authenticateToken, pengajuanController.getPublicProfile);
+
+// Serve profile photos
 router.get('/profile/:filename', (req, res) => {
     const { filename } = req.params;
     const filePath = path.join(__dirname, '../../uploads/profile', filename);

@@ -11,18 +11,15 @@ async function main() {
   // 1. Create Admin User
   // ----------------------------------------------------
   const adminUser = await prisma.user.upsert({
-    where: { username: 'adminunivpancasila' },
-    update: { password: passwordHash, role: 'admin' },
+    where: { username: 'adminunivpancasila@univ.ac.id' },
+    update: { 
+      password: passwordHash, 
+      role: 'admin'
+    },
     create: {
-      username: 'adminunivpancasila',
-      email: 'adminunivpancasila@univ.ac.id',
+      username: 'adminunivpancasila@univ.ac.id',
       password: passwordHash,
-      role: 'admin',
-      staf: {
-        create: {
-          nama: 'Administrator Universitas Pancasila'
-        }
-      }
+      role: 'admin'
     },
   });
 

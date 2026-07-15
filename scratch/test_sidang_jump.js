@@ -37,7 +37,7 @@ async function testAdvisorApproval() {
             data: {
                 pembimbingApproved: true,
                 prodiApproved: isScheduled ? true : cur.prodiApproved,
-                status: isScheduled ? 'TERJADWAL' : 'MENUNGGU_PENJADWALAN_PRODI'
+                status: isScheduled ? 'TERJADWAL' : 'MENUNGGU_PENJADWALAN_KOORDINATOR'
             }
         });
     };

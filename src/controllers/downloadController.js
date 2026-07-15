@@ -18,6 +18,16 @@ const getDownloads = async (req, res) => {
                         select: {
                             nama: true
                         }
+                    },
+                    user: {
+                        select: {
+                            username: true,
+                            role: true,
+                            id: true,
+                            
+                            mahasiswa: { select: { nama: true, photo: true } },
+                            dosen: { select: { nama: true, photo: true } }
+                        }
                     }
                 },
                 orderBy: {
@@ -52,6 +62,16 @@ const getDownloadById = async (req, res) => {
                     select: {
                         nama: true
                     }
+                },
+                user: {
+                    select: {
+                        username: true,
+                        role: true,
+                        id: true,
+                        
+                        mahasiswa: { select: { nama: true, photo: true } },
+                        dosen: { select: { nama: true, photo: true } }
+                    }
                 }
             }
         });
@@ -68,18 +88,24 @@ const getDownloadById = async (req, res) => {
 const createDownload = async (req, res) => {
     try {
         const { title, description, fileUrl, fileType } = req.body;
-        const dosen = await prisma.dosen.findUnique({
+        let dosen = await prisma.dosen.findUnique({
             where: { userId: parseInt(req.user.id) }
         });
+
+        if (!dosen && (req.user.role.toUpperCase() === 'ADMIN' || req.user.role.toUpperCase() === 'STAF')) {
+            dosen = await prisma.dosen.findFirst();
+        }
 
         if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
 
         const download = await prisma.download.create({
             data: {
                 title,
+                description,
                 fileUrl,
                 fileType,
-                dosenId: dosen.id
+                dosenNidn: dosen.nidn,
+                userId: parseInt(req.user.id)
             }
         });
 
@@ -97,7 +123,7 @@ const updateDownload = async (req, res) => {
         
         const download = await prisma.download.update({
             where: { id: parseInt(id) },
-            data: { title, fileUrl, fileType }
+            data: { title, description, fileUrl, fileType }
         });
         res.json(download);
     } catch (error) {
