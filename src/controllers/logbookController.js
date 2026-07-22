@@ -252,8 +252,8 @@ exports.syncLogbooks = async (req, res) => {
 
         res.json({ message: "Logbook berhasil disinkronisasi" });
     } catch (error) {
-        console.error("Sync Logbooks Error:", error);
-        res.status(500).json({ message: "Terjadi kesalahan pada server" });
+        console.error("Sync Logbook Error Details:", error);
+        res.status(500).json({ message: "Terjadi kesalahan pada server", error: error.message });
     }
 };
 

@@ -1290,10 +1290,13 @@ const getMahasiswaTanpaPengajuan = async (req, res) => {
 
         const students = await prisma.mahasiswa.findMany({
             where: whereCondition,
-            include: {
-                user: {
-                    select: { id: true }
-                }
+            select: {
+                nim: true,
+                nama: true,
+                email: true,
+                nomorTelepon: true,
+                tahunMasuk: true,
+                photo: true,
             }
         });
 

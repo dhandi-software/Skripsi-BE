@@ -1,8 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-const { findUserByIdentifier } = require('../models/userModel');
+const { UserModel } = require('../models');
 
 const SECRET_KEY = process.env.JWT_SECRET || 'skripsi-secret-key';
 
@@ -16,7 +14,7 @@ const login = async (req, res) => {
             return res.status(400).json({ message: 'Username or Email is required' });
         }
 
-        const user = await findUserByIdentifier(identifier);
+        const user = await UserModel.findUserByIdentifier(identifier);
         if (!user) {
             return res.status(401).json({ message: 'Email/NIM atau password yang Anda masukkan salah.' });
         }
@@ -81,7 +79,7 @@ const changePassword = async (req, res) => {
     const userId = req.user.id;
 
     try {
-        const user = await prisma.user.findUnique({
+        const user = await UserModel.findUnique({
             where: { id: userId }
         });
 
@@ -96,7 +94,7 @@ const changePassword = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        await prisma.user.update({
+        await UserModel.update({
             where: { id: userId },
             data: { password: hashedPassword }
         });
@@ -115,7 +113,7 @@ const checkEmail = async (req, res) => {
     }
 
     try {
-        const user = await findUserByIdentifier(email);
+        const user = await UserModel.findUserByIdentifier(email);
         if (!user) {
             return res.status(404).json({ message: 'Email tidak ditemukan di dalam sistem.' });
         }
@@ -140,7 +138,7 @@ const resetPassword = async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await prisma.user.update({
+        await UserModel.update({
             where: { id: parseInt(userId) },
             data: { password: hashedPassword }
         });
