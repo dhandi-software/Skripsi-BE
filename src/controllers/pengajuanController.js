@@ -32,7 +32,6 @@ exports.createPengajuan = async (req, res) => {
         if (checkDosen && checkDosen.jabatan && checkDosen.jabatan.toLowerCase().includes("reguler")) {
             return res.status(403).json({ message: "Dosen Reguler tidak dapat dipilih sebagai pembimbing." });
         }
-        
         // Find Mahasiswa profile
         const mahasiswa = await prisma.mahasiswa.findUnique({
             where: { userId: req.user.id }
