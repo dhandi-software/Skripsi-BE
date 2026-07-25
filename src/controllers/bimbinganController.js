@@ -132,20 +132,23 @@ const getDosenBimbinganStudents = async (req, res) => {
 
 const getLaporanAkhirDosen = async (req, res) => {
     try {
-        const dosen = await prisma.dosen.findUnique({
-            where: { userId: req.user.id }
-        });
-
-        if (!dosen) {
-            return res.status(404).json({ message: "Dosen profile not found" });
+        const isAdmin = req.user.role === 'admin';
+        
+        let dosen = null;
+        if (!isAdmin) {
+            dosen = await prisma.dosen.findUnique({
+                where: { userId: req.user.id }
+            });
+            if (!dosen) {
+                return res.status(404).json({ message: "Dosen profile not found" });
+            }
         }
 
-        const isAdmin = req.user.role === 'admin';
         const isProdi = dosen && dosen.jabatan && (
             dosen.jabatan.toLowerCase().includes("koordinator") || 
             dosen.jabatan.toLowerCase().includes("kepala program studi") || 
-            dosen.jabatan.toLowerCase().includes("kaprodi")
-            
+            dosen.jabatan.toLowerCase().includes("kaprodi") ||
+            dosen.jabatan.toLowerCase().includes("prodi")
         );
 
         let whereClause = { status: 'APPROVED' };
@@ -217,7 +220,7 @@ const getLaporanAkhirDosen = async (req, res) => {
 
             const pengajuan = mhs.pengajuanJudul && mhs.pengajuanJudul.length > 0 ? mhs.pengajuanJudul[0] : null;
             const logbooks = mhs.logbook || [];
-            const logbooksApproved = logbooks.filter(l => l.pembimbingParaf !== null && l.pembimbingParaf !== "");
+            const logbooksApproved = logbooks.filter(l => l.pembimbingParaf !== null && l.pembimbingParaf !== "" && l.mahasiswaParaf !== null && l.mahasiswaParaf !== "");
 
             const sidang = mhs.sidang && mhs.sidang.length > 0 ? mhs.sidang[0] : null;
             let pengujiNama = penilaian ? penilaian.p2_nama : null;

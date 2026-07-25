@@ -9,5 +9,6 @@ router.post('/', authenticateToken, sanksiController.createSanksi);
 router.put('/:id', authenticateToken, sanksiController.updateSanksi);
 router.delete('/:id', authenticateToken, sanksiController.deleteSanksi);
 router.patch('/:id/terima', authenticateToken, sanksiController.terimaHardcover);
+router.patch('/:id/konfirmasi', authenticateToken, sanksiController.konfirmasiSanksi);
 
 module.exports = router;

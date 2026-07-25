@@ -2,8 +2,14 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-    const dosen = await prisma.dosen.findMany({ select: { jabatan: true }, distinct: ['jabatan'] });
-    console.log(dosen);
+  const sidang = await prisma.sidang.groupBy({
+    by: ['status'],
+    _count: {
+      status: true
+    }
+  });
+  console.log("Sidang Statuses:");
+  console.dir(sidang);
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect());

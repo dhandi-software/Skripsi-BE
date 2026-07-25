@@ -285,8 +285,8 @@ model Logbook {
   mahasiswaNim    String? @db.VarChar(255)
   tanggalPukul    DateTime
   uraian          String
-  mahasiswaParaf  String? @db.VarChar(255)
-  pembimbingParaf String? @db.VarChar(255)
+  mahasiswaParaf  String?
+  pembimbingParaf String?
   catatan         String?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
@@ -305,6 +305,9 @@ model SanksiAdministrasi {
   tanggalSurat  String @db.VarChar(255)
   status        String    @default("Menunggu Hardcover") @db.VarChar(255)
   tenggatWaktu  DateTime?
+  tanggalKonfirmasi DateTime?
+  denda             Int       @default(0)
+  keterlambatanMinggu Int     @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   dosen         Dosen     @relation(fields: [dosenNidn], references: [nidn], onDelete: Cascade)

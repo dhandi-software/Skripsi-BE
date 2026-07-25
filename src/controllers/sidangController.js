@@ -67,8 +67,8 @@ const applyForSidang = async (req, res) => {
                 dosenNidn: approvedJudul.dosenNidn,
                 judul: finalJudul,
                 laporanUrl: `/uploads/${file.filename}`, // multer saves to uploads dir
-                status: 'MENUNGGU_PENJADWALAN_KOORDINATOR',
-                pembimbingApproved: true, // Auto-approve or skip
+                status: 'MENUNGGU_PERSETUJUAN_PEMBIMBING',
+                pembimbingApproved: false, 
                 mahasiswaSeen: true
             }
         });
@@ -83,7 +83,7 @@ const applyForSidang = async (req, res) => {
 const approveByPembimbing = async (req, res) => {
     try {
         const { id } = req.params;
-        const { tanggalSidang, waktuSidang, lokasi, isRejected } = req.body;
+        const { tanggalSidang, waktuSidang, lokasi, isRejected, catatan } = req.body;
 
         const currentSidang = await prisma.sidang.findUnique({
             where: { id: parseInt(id) }
@@ -98,6 +98,7 @@ const approveByPembimbing = async (req, res) => {
                  where: { id: parseInt(id) },
                  data: {
                      status: 'DITOLAK',
+                     catatan: catatan || null,
                      mahasiswaSeen: false
                  }
              });
@@ -184,7 +185,15 @@ const getSidangDosen = async (req, res) => {
             
             if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
 
-            if (dosen.jabatan && (dosen.jabatan.includes('Pejabat Prodi') || dosen.jabatan.includes('Koordinator KP'))) {
+            if (
+                req.user.role.toUpperCase() === 'KAPRODI' ||
+                (dosen.jabatan && (
+                    dosen.jabatan.includes('Pejabat Prodi') || 
+                    dosen.jabatan.includes('Koordinator KP') ||
+                    dosen.jabatan.toLowerCase().includes('kaprodi') ||
+                    dosen.jabatan.toLowerCase().includes('kepala program studi')
+                ))
+            ) {
                 sidangs = await prisma.sidang.findMany({
                     include: {
                         mahasiswa: true,
@@ -285,6 +294,19 @@ const markAsSeenByMahasiswa = async (req, res) => {
 const deleteSidang = async (req, res) => {
     try {
         const { id } = req.params;
+        const sidang = await prisma.sidang.findUnique({ where: { id: parseInt(id) } });
+        if (!sidang) return res.status(404).json({ message: "Data sidang tidak ditemukan." });
+
+        if (req.user.role.toUpperCase() === 'MAHASISWA') {
+            const mahasiswa = await prisma.mahasiswa.findUnique({ where: { userId: req.user.id } });
+            if (!mahasiswa || sidang.mahasiswaNim !== mahasiswa.nim) {
+                return res.status(403).json({ message: "Tidak memiliki akses untuk menghapus data ini." });
+            }
+            if (sidang.status === 'TERJADWAL' || sidang.status === 'SELESAI') {
+                return res.status(400).json({ message: "Tidak dapat membatalkan pengajuan sidang yang sudah dijadwalkan atau dikonfirmasi." });
+            }
+        }
+
         await prisma.sidang.delete({ where: { id: parseInt(id) } });
         res.json({ message: "Data sidang berhasil dihapus." });
     } catch (error) {
