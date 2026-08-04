@@ -101,26 +101,53 @@ exports.createPengajuan = async (req, res) => {
             return res.status(500).json({ message: "Database Error: " + dbError.message });
         }
 
-        // Notify Dosen (Optional: Create Message)
+        // Notify Koordinator or Dosen (Optional: Create Message)
         try {
-             const dosen = await prisma.dosen.findUnique({
-                 where: { nidn: dosenId },
-                 include: { user: true }
-             });
+            const currentStatus = pengajuan.status;
             
-             if (dosen && dosen.user) {
-                 await prisma.message.create({
-                    data: {
-                        senderId: req.user.id,
-                        receiverId: dosen.user.id,
-                        content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
-                        isRead: false
-                    }
+            if (currentStatus === 'PENDING_KOORDINATOR') {
+                // Notifikasi ke semua dosen Koordinator
+                const koordinators = await prisma.dosen.findMany({
+                    where: {
+                        jabatan: {
+                            contains: 'koordinator',
+                            mode: 'insensitive'
+                        }
+                    },
+                    include: { user: true }
                 });
-             }
+
+                for (const koor of koordinators) {
+                    if (koor.user) {
+                        await prisma.message.create({
+                            data: {
+                                senderId: req.user.id,
+                                receiverId: koor.user.id,
+                                content: `Persetujuan dibutuhkan untuk Pengajuan Judul: "${judul}" oleh ${mahasiswa.nama}`,
+                                isRead: false
+                            }
+                        });
+                    }
+                }
+            } else {
+                 const dosen = await prisma.dosen.findUnique({
+                     where: { nidn: dosenId },
+                     include: { user: true }
+                 });
+                
+                 if (dosen && dosen.user) {
+                     await prisma.message.create({
+                        data: {
+                            senderId: req.user.id,
+                            receiverId: dosen.user.id,
+                            content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
+                            isRead: false
+                        }
+                    });
+                 }
+            }
         } catch (notifyError) {
              console.error("Failed to send notification (non-blocking):", notifyError);
-             // Verify if this is causing the 500? No, it's swallowed here.
         }
 
         res.status(201).json({ message: "Pengajuan successful", data: pengajuan });
@@ -231,6 +258,15 @@ exports.getPengajuanByDosen = async (req, res) => {
             orderBy: {
                 tanggal: 'desc'
             }
+        });
+
+        pengajuanList.sort((a, b) => {
+            const isAPending = a.status === 'PENDING' || a.status === 'PENDING_KOORDINATOR';
+            const isBPending = b.status === 'PENDING' || b.status === 'PENDING_KOORDINATOR';
+            
+            if (isAPending && !isBPending) return -1;
+            if (!isAPending && isBPending) return 1;
+            return 0; // maintain date sorting for items in the same group
         });
 
         res.json(pengajuanList);
@@ -516,7 +552,8 @@ exports.cancelPengajuan = async (req, res) => {
 
         // 4. Verify status (Allow cancellation only if PENDING or REVISION)
         // If it's REVISION, the student might want to just delete it and start over.
-        if (pengajuan.status !== 'PENDING' && pengajuan.status !== 'REVISION') {
+        const allowedStatuses = ['PENDING', 'PENDING_KOORDINATOR', 'REVISION', 'REVISION_KOORDINATOR'];
+        if (!allowedStatuses.includes(pengajuan.status)) {
             return res.status(400).json({ message: "Hanya pengajuan dengan status PENDING atau REVISION yang dapat dibatalkan" });
         }
 
