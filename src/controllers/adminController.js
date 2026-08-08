@@ -270,7 +270,7 @@ const createDosenMassal = async (req, res) => {
 
 const createDosen = async (req, res) => {
     try {
-        const { email, password, nama, nidn, nip, jabatan, peminatan } = req.body;
+        const { email, password, nama, nidn, nip, jabatan, peminatan, maxBimbingan } = req.body;
 
         // Basic Validation
         if (!email || !password || !nama || !nidn || !jabatan) {
@@ -327,7 +327,8 @@ const createDosen = async (req, res) => {
                     email,
                     nama,
                     jabatan,
-                    peminatan: peminatan || []
+                    peminatan: peminatan || [],
+                    maxBimbingan: maxBimbingan !== undefined && maxBimbingan !== "" ? parseInt(maxBimbingan) : 6
                 }
             });
 
@@ -742,7 +743,8 @@ const updateUser = async (req, res) => {
                          email: email || undefined,
                          nomorTelepon: profileData.nomorTelepon,
                          jabatan: profileData.jabatan,
-                         peminatan: profileData.peminatan
+                         peminatan: profileData.peminatan,
+                         maxBimbingan: profileData.maxBimbingan !== undefined && profileData.maxBimbingan !== "" ? parseInt(profileData.maxBimbingan) : undefined
                      }
                  });
              } else if (user.role === 'staf') {

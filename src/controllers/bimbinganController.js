@@ -377,11 +377,7 @@ const uploadDraftMahasiswa = async (req, res) => {
     try {
         const { id } = req.params; // Bimbingan ID
         const file = req.file;
-        const { keteranganProgres } = req.body;
-
-        if (!file) {
-            return res.status(400).json({ message: "No file uploaded" });
-        }
+        const { keteranganProgres, isDeletedFile } = req.body;
 
         const bimbinganInfo = await BimbinganModel.findUnique({
             where: { id: parseInt(id) },
@@ -391,6 +387,14 @@ const uploadDraftMahasiswa = async (req, res) => {
             return res.status(404).json({ message: "Bimbingan not found" });
         }
 
+        if (!file && bimbinganInfo.status === 'ASSIGNED') {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+
+        let finalFileMahasiswa = file ? `/uploads/bimbingan/${file.filename}` : 
+                                 (isDeletedFile === "true" ? null : bimbinganInfo.fileMahasiswa);
+        let finalKeterangan = keteranganProgres !== undefined ? (keteranganProgres === "" ? null : keteranganProgres) : bimbinganInfo.keteranganProgres;
+
         if (bimbinganInfo.status === 'REVISION') {
             const newBimbingan = await BimbinganModel.create({
                 data: {
@@ -398,8 +402,8 @@ const uploadDraftMahasiswa = async (req, res) => {
                     dosenNidn: bimbinganInfo.dosenNidn,
                     topik: bimbinganInfo.topik,
                     status: 'SUBMITTED',
-                    fileMahasiswa: `/uploads/bimbingan/${file.filename}`,
-                    keteranganProgres: keteranganProgres || null,
+                    fileMahasiswa: finalFileMahasiswa,
+                    keteranganProgres: finalKeterangan,
                     jadwalBimbingan: bimbinganInfo.jadwalBimbingan,
                     versi: bimbinganInfo.versi + 1,
                     parentId: bimbinganInfo.id,
@@ -417,8 +421,8 @@ const uploadDraftMahasiswa = async (req, res) => {
             const bimbingan = await BimbinganModel.update({
                 where: { id: parseInt(id) },
                 data: {
-                    fileMahasiswa: `/uploads/bimbingan/${file.filename}`,
-                    keteranganProgres: keteranganProgres || null,
+                    fileMahasiswa: finalFileMahasiswa,
+                    keteranganProgres: finalKeterangan,
                     status: 'SUBMITTED'
                 }
             });
@@ -620,6 +624,9 @@ const getAllProdiBimbingan = async (req, res) => {
                                 bimbingan: {
                                     orderBy: { tanggal: 'desc' },
                                     take: 1
+                                },
+                                _count: {
+                                    select: { bimbingan: true }
                                 }
                             }
                         }

@@ -164,7 +164,8 @@ exports.getDosenList = async (req, res) => {
                 nama: true,
                 jabatan: true,
                 nidn: true,
-                peminatan: true
+                peminatan: true,
+                maxBimbingan: true
             }
         });
 
@@ -187,7 +188,7 @@ exports.getDosenList = async (req, res) => {
         const dosenWithKuota = dosenList.map(dosen => ({
             ...dosen,
             terisi: bimbinganMap[dosen.nidn] || 0,
-            kuota: 6
+            kuota: dosen.maxBimbingan !== undefined ? dosen.maxBimbingan : 6
         }));
 
         console.log("Dosen list fetched:", dosenList.length);
@@ -281,7 +282,7 @@ exports.updatePengajuanStatus = async (req, res) => {
         const { id } = req.params;
         const { status, remarks, deadlineRevisi } = req.body; // remarks optional for message
 
-        if (!['APPROVED', 'REJECTED', 'REVISION'].includes(status)) {
+        if (!['APPROVED', 'REJECTED', 'REVISION', 'PENDING', 'PENDING_KOORDINATOR'].includes(status)) {
             return res.status(400).json({ message: "Invalid status" });
         }
 
@@ -367,7 +368,10 @@ exports.getPengajuanById = async (req, res) => {
             where: { id: parseInt(id) },
             include: {
                 mahasiswa: {
-                    include: { user: true }
+                    include: { 
+                        user: true,
+                        bimbingan: true 
+                    }
                 },
                 dosen: true
             }
