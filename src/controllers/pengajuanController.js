@@ -50,15 +50,37 @@ exports.createPengajuan = async (req, res) => {
                 orderBy: { tanggal: 'desc' }
             });
 
+            // Check if student has EVER had any proposal approved by Koordinator
+            const pastKoordinatorApproval = await prisma.pengajuanJudul.findFirst({
+                where: { 
+                    mahasiswaNim: mahasiswa.nim,
+                    status: { in: ['PENDING', 'APPROVED', 'REVISION', 'CANCELLED_KOORDINATOR_APPROVED'] }
+                }
+            });
+
+            const isApprovedByKoordinator = mahasiswa.isKoordinatorApproved || !!pastKoordinatorApproval;
+
+            // If student was EVER approved by Koordinator, skip Koordinator!
+            let newStatus = isApprovedByKoordinator ? 'PENDING' : 'PENDING_KOORDINATOR';
+
+            if (isApprovedByKoordinator && !mahasiswa.isKoordinatorApproved) {
+                try {
+                    await prisma.mahasiswa.update({
+                        where: { nim: mahasiswa.nim },
+                        data: { isKoordinatorApproved: true }
+                    });
+                } catch (mErr) {
+                    console.error("Failed to sync isKoordinatorApproved:", mErr);
+                }
+            }
+
             if (existingPengajuan) {
-                if (existingPengajuan.status === 'PENDING' || existingPengajuan.status === 'PENDING_KOORDINATOR' || existingPengajuan.status === 'APPROVED') {
-                    return res.status(400).json({ message: "Anda sudah memiliki pengajuan yang sedang diproses atau disetujui." });
+                if (existingPengajuan.status === 'PENDING_KOORDINATOR' && !mahasiswa.isKoordinatorApproved) {
+                    return res.status(400).json({ message: "Anda sudah memiliki pengajuan yang sedang diproses oleh Koordinator." });
                 }
 
-                // If REVISION or REJECTED, UPDATE the existing record
-                let newStatus = 'PENDING_KOORDINATOR';
-                if (existingPengajuan.status === 'REVISION') {
-                    newStatus = 'PENDING'; // Skip koordinator if revision was from pembimbing
+                if (existingPengajuan.status === 'APPROVED') {
+                    return res.status(400).json({ message: "Pengajuan Anda sudah disetujui secara final oleh Dosen Pembimbing." });
                 }
 
                 pengajuan = await prisma.pengajuanJudul.update({
@@ -92,7 +114,7 @@ exports.createPengajuan = async (req, res) => {
                         sksNilaiD: String(sksNilaiD),
                         ipk: String(ipk),
                         batasStudi,
-                        status: 'PENDING_KOORDINATOR'
+                        status: newStatus
                     }
                 });
             }
@@ -216,6 +238,35 @@ exports.getMahasiswaProfile = async (req, res) => {
         if (!mahasiswa) {
              return res.status(404).json({ message: "Profile not found" });
         }
+
+        // Auto-heal status for Koordinator-approved Mahasiswa
+        const hasPastApproval = mahasiswa.isKoordinatorApproved || (mahasiswa.pengajuanJudul && mahasiswa.pengajuanJudul.some(p => ['PENDING', 'APPROVED', 'REVISION', 'CANCELLED_KOORDINATOR_APPROVED'].includes(p.status)));
+        
+        if (hasPastApproval) {
+            if (!mahasiswa.isKoordinatorApproved) {
+                try {
+                    await prisma.mahasiswa.update({
+                        where: { nim: mahasiswa.nim },
+                        data: { isKoordinatorApproved: true }
+                    });
+                    mahasiswa.isKoordinatorApproved = true;
+                } catch (e) {
+                    console.error("Failed to sync isKoordinatorApproved:", e);
+                }
+            }
+
+            if (mahasiswa.pengajuanJudul && mahasiswa.pengajuanJudul.length > 0 && mahasiswa.pengajuanJudul[0].status === 'PENDING_KOORDINATOR') {
+                try {
+                    await prisma.pengajuanJudul.update({
+                        where: { id: mahasiswa.pengajuanJudul[0].id },
+                        data: { status: 'PENDING' }
+                    });
+                    mahasiswa.pengajuanJudul[0].status = 'PENDING';
+                } catch (e) {
+                    console.error("Failed to auto-heal status to PENDING:", e);
+                }
+            }
+        }
         res.json(mahasiswa);
     } catch (error) {
         console.error("Get Profile Error:", error);
@@ -296,7 +347,17 @@ exports.updatePengajuanStatus = async (req, res) => {
 
         let dbStatus = status;
         if (existingPengajuan.status === 'PENDING_KOORDINATOR') {
-            if (status === 'APPROVED') dbStatus = 'PENDING';
+            if (status === 'APPROVED') {
+                dbStatus = 'PENDING';
+                try {
+                    await prisma.mahasiswa.update({
+                        where: { nim: existingPengajuan.mahasiswaNim },
+                        data: { isKoordinatorApproved: true }
+                    });
+                } catch (mErr) {
+                    console.error("Failed to update isKoordinatorApproved:", mErr);
+                }
+            }
             else if (status === 'REVISION') dbStatus = 'REVISION_KOORDINATOR';
             else if (status === 'REJECTED') dbStatus = 'REJECTED_KOORDINATOR';
         }
@@ -561,9 +622,27 @@ exports.cancelPengajuan = async (req, res) => {
             return res.status(400).json({ message: "Hanya pengajuan dengan status PENDING atau REVISION yang dapat dibatalkan" });
         }
 
-        // 5. Delete the proposal
-        await prisma.pengajuanJudul.delete({
-            where: { id: parseInt(id) }
+        // 5. Check if Koordinator had already approved it (status was PENDING or REVISION) or student is already approved
+        const isApprovedByKoordinator = pengajuan.status === 'PENDING' || pengajuan.status === 'REVISION' || mahasiswa.isKoordinatorApproved;
+
+        if (isApprovedByKoordinator && !mahasiswa.isKoordinatorApproved) {
+            try {
+                await prisma.mahasiswa.update({
+                    where: { nim: mahasiswa.nim },
+                    data: { isKoordinatorApproved: true }
+                });
+            } catch (mErr) {
+                console.error("Failed to set isKoordinatorApproved on cancel:", mErr);
+            }
+        }
+
+        const cancelStatus = isApprovedByKoordinator ? 'CANCELLED_KOORDINATOR_APPROVED' : 'CANCELLED';
+
+        await prisma.pengajuanJudul.update({
+            where: { id: parseInt(id) },
+            data: {
+                status: cancelStatus
+            }
         });
 
         res.json({ message: "Pengajuan berhasil dibatalkan" });

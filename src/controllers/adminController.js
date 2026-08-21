@@ -224,17 +224,41 @@ const createDosenMassal = async (req, res) => {
             }
         }
 
-        const normalizedUsers = users.map(u => ({
-            ...u,
-            identifier: u.nidn || u.nip || u.nim,
-            nip: u.nip || null
-        }));
+        const normalizedUsers = users.map(u => {
+            const rawId = u.nidn || u.nip || u.nim || u.id;
+            return {
+                ...u,
+                identifier: rawId ? String(rawId).trim() : "",
+                nip: u.nip ? String(u.nip).trim() : null
+            };
+        });
 
-        const emails = normalizedUsers.map(u => u.email).filter(Boolean);
+        // Check for missing required fields & intra-file duplicates
+        const seenEmails = new Set();
+        const seenIdentifiers = new Set();
+
+        for (const item of normalizedUsers) {
+            if (!item.identifier) {
+                return res.status(400).json({ message: `Data Dosen ${item.nama || ''} wajib menyertakan NIDN / NIP di file Excel` });
+            }
+            if (!item.nama) {
+                return res.status(400).json({ message: `Data Dosen (NIDN: ${item.identifier}) wajib menyertakan Nama di file Excel` });
+            }
+            if (seenEmails.has(item.email.toLowerCase())) {
+                return res.status(400).json({ message: `Email duplikat ditemukan di dalam file Excel: ${item.email}` });
+            }
+            if (seenIdentifiers.has(item.identifier)) {
+                return res.status(400).json({ message: `NIDN/NIP duplikat ditemukan di dalam file Excel: ${item.identifier}` });
+            }
+            seenEmails.add(item.email.toLowerCase());
+            seenIdentifiers.add(item.identifier);
+        }
+
+        const emails = normalizedUsers.map(u => u.email.toLowerCase()).filter(Boolean);
         const identifiers = normalizedUsers.map(u => u.identifier).filter(Boolean);
         const usernames = identifiers.map(id => `D-${id}`);
 
-        // Fetch existing users
+        // Fetch existing users in DB
         const existingUsers = await prisma.user.findMany({
             where: {
                 OR: [
@@ -254,16 +278,16 @@ const createDosenMassal = async (req, res) => {
 
         const nidnSet = new Set(existingNidns.map(d => d.nidn));
         const emailSet = new Set(
-            existingUsers.flatMap(u => [u.mahasiswa?.email, u.dosen?.email, u.staf?.email]).filter(Boolean)
+            existingUsers.flatMap(u => [u.mahasiswa?.email, u.dosen?.email, u.staf?.email]).filter(Boolean).map(e => e.toLowerCase())
         );
         const usernameSet = new Set(existingUsers.map(u => u.username));
 
         for (const item of normalizedUsers) {
-            if (emailSet.has(item.email)) {
-                return res.status(400).json({ message: `Data duplikat ditemukan untuk Email: ${item.email}` });
+            if (emailSet.has(item.email.toLowerCase())) {
+                return res.status(400).json({ message: `Data duplikat di database untuk Email: ${item.email}` });
             }
             if (usernameSet.has(`D-${item.identifier}`) || nidnSet.has(item.identifier)) {
-                return res.status(400).json({ message: `Data duplikat ditemukan untuk NIDN: ${item.identifier}` });
+                return res.status(400).json({ message: `Data duplikat di database untuk NIDN/NIP: ${item.identifier}` });
             }
         }
 

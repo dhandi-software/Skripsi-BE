@@ -39,6 +39,7 @@ model Mahasiswa {
   ipk                String? @db.VarChar(255)
   sksNilaiD          String? @db.VarChar(255)
   batasStudi         String? @db.VarChar(255)
+  isKoordinatorApproved Boolean @default(false)
   acaraReadStatus    AcaraReadStatus[]
   bimbingan          Bimbingan[]
   logbook            Logbook[]
