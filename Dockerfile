@@ -21,6 +21,7 @@ RUN npx prisma generate
 # Expose port (default 5002 as seen in index.js)
 EXPOSE 5002
 
-# Default command (can be overridden in docker-compose.yml)
-CMD ["npm", "run", "dev"]
+# Default command for production
+CMD ["npm", "start"]
+
 

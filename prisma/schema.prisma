@@ -35,6 +35,11 @@ model Mahasiswa {
   nomorTelepon       String? @db.VarChar(255)
   email              String?              @unique @db.VarChar(255)
   photo              String? @db.VarChar(255)
+  sksDicapai         String? @db.VarChar(255)
+  ipk                String? @db.VarChar(255)
+  sksNilaiD          String? @db.VarChar(255)
+  batasStudi         String? @db.VarChar(255)
+  isKoordinatorApproved Boolean @default(false)
   acaraReadStatus    AcaraReadStatus[]
   bimbingan          Bimbingan[]
   logbook            Logbook[]
@@ -56,6 +61,7 @@ model Dosen {
   email              String?              @unique @db.VarChar(255)
   photo              String?              @db.VarChar(255)
   peminatan          String[]             @default([]) @db.VarChar(255)
+  maxBimbingan       Int                  @default(6)
   acara              Acara[]
   bimbingan          Bimbingan[]
   user               User                 @relation(fields: [userId], references: [id])

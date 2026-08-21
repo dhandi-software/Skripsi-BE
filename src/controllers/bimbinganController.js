@@ -1,8 +1,8 @@
-const prisma = require('../prisma');
+const { BimbinganModel, DosenModel, MahasiswaModel, PengajuanJudulModel, BimbinganAnnotationModel } = require('../models');
 
 const getAllBimbingan = async (req, res) => {
     try {
-        const bimbingan = await prisma.bimbingan.findMany({
+        const bimbingan = await BimbinganModel.findMany({
             include: {
                 mahasiswa: true,
                 dosen: true
@@ -17,7 +17,7 @@ const getAllBimbingan = async (req, res) => {
 const getBimbinganByMahasiswa = async (req, res) => {
     const { mahasiswaId } = req.params;
     try {
-        const bimbingan = await prisma.bimbingan.findMany({
+        const bimbingan = await BimbinganModel.findMany({
             where: { mahasiswaNim: mahasiswaId },
             include: { dosen: true },
             orderBy: { id: 'desc' }
@@ -31,7 +31,7 @@ const getBimbinganByMahasiswa = async (req, res) => {
 const createBimbingan = async (req, res) => {
     const { mahasiswaId, dosenId, topik, catatan, status } = req.body;
     try {
-        const newBimbingan = await prisma.bimbingan.create({
+        const newBimbingan = await BimbinganModel.create({
             data: {
                 mahasiswaNim: mahasiswaId,
                 dosenNidn: dosenId,
@@ -54,7 +54,7 @@ const getDosenBimbinganStudents = async (req, res) => {
         const whereClause = { status: 'APPROVED' };
 
         if (req.user.role.toUpperCase() !== 'STAF') {
-            const dosen = await prisma.dosen.findUnique({
+            const dosen = await DosenModel.findUnique({
                 where: { userId: req.user.id }
             });
             if (!dosen) return res.status(404).json({ message: "Dosen profile not found" });
@@ -71,7 +71,7 @@ const getDosenBimbinganStudents = async (req, res) => {
             };
         }
 
-        let pengajuanList = await prisma.pengajuanJudul.findMany({
+        let pengajuanList = await PengajuanJudulModel.findMany({
             where: whereClause,
             include: {
                 dosen: req.user.role.toUpperCase() === 'STAF', // Only include dosen if STAF
@@ -105,8 +105,8 @@ const getDosenBimbinganStudents = async (req, res) => {
             const bTask = b.mahasiswa?.bimbingan?.[0];
 
             const getPriority = (task) => {
-                if (!task || task.status === 'APPROVED') return 1; // Priority 1: Belum ditargetkan
-                if (task.status === 'SUBMITTED') return 2; // Priority 2: Menunggu Reviu Dosen
+                if (task && task.status === 'SUBMITTED') return 1; // Priority 1: Menunggu Reviu Dosen (Pending)
+                if (!task || task.status === 'APPROVED') return 2; // Priority 2: Belum ditargetkan / Selesai
                 if (task.status === 'REVISION') return 3; // Priority 3: Perlu Revisi Mahasiswa
                 if (task.status === 'ASSIGNED') return 4; // Priority 4: Sedang Dikerjakan Mahasiswa
                 return 5;
@@ -136,7 +136,7 @@ const getLaporanAkhirDosen = async (req, res) => {
         
         let dosen = null;
         if (!isAdmin) {
-            dosen = await prisma.dosen.findUnique({
+            dosen = await DosenModel.findUnique({
                 where: { userId: req.user.id }
             });
             if (!dosen) {
@@ -160,7 +160,7 @@ const getLaporanAkhirDosen = async (req, res) => {
         }
 
         // Get all unique students supervised by this dosen via approved title proposals (or all students if Admin/Prodi)
-        const pengajuanList = await prisma.pengajuanJudul.findMany({
+        const pengajuanList = await PengajuanJudulModel.findMany({
             where: whereClause,
             include: {
                 mahasiswa: {
@@ -177,7 +177,7 @@ const getLaporanAkhirDosen = async (req, res) => {
         });
 
         // Fetch all dosens to map pengujiNidn to nama
-        const allDosen = await prisma.dosen.findMany({ select: { nidn: true, nama: true } });
+        const allDosen = await DosenModel.findMany({ select: { nidn: true, nama: true } });
         const dosenMap = new Map(allDosen.map(d => [d.nidn, d.nama]));
 
         const mahasiswaMap = new Map();
@@ -251,7 +251,7 @@ const getLaporanAkhirDosen = async (req, res) => {
                 keteranganPenilaian: penilaian ? penilaian.keterangan : null,
                 tanggalPenilaian: penilaian ? penilaian.tanggal : null,
                 statusProgress,
-                tempatKP: mhs.tempatKP || null,
+                tempatKP: mhs.tempatKP && mhs.tempatKP.length > 0 ? mhs.tempatKP[0] : null,
                 logbooks: logbooks,
                 bimbingans: bimbinganList
             };
@@ -268,7 +268,7 @@ const assignBimbinganTask = async (req, res) => {
     try {
         const { mahasiswaId, topik, jadwalBimbingan } = req.body;
 
-        const dosen = await prisma.dosen.findUnique({
+        const dosen = await DosenModel.findUnique({
             where: { userId: req.user.id }
         });
 
@@ -276,7 +276,7 @@ const assignBimbinganTask = async (req, res) => {
             return res.status(404).json({ message: "Dosen profile not found" });
         }
 
-        const newBimbingan = await prisma.bimbingan.create({
+        const newBimbingan = await BimbinganModel.create({
             data: {
                 mahasiswaNim: mahasiswaId,
                 dosenNidn: dosen.nidn,
@@ -287,6 +287,11 @@ const assignBimbinganTask = async (req, res) => {
                 versi: 1
             }
         });
+
+        const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: mahasiswaId } });
+        if (mahasiswa && mahasiswa.userId) {
+            req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
+        }
 
         res.status(201).json(newBimbingan);
     } catch (error) {
@@ -300,7 +305,7 @@ const updateBimbinganTask = async (req, res) => {
         const { id } = req.params;
         const { topik, jadwalBimbingan } = req.body;
 
-        const bimbinganInfo = await prisma.bimbingan.findUnique({
+        const bimbinganInfo = await BimbinganModel.findUnique({
             where: { id: parseInt(id) },
         });
 
@@ -308,7 +313,7 @@ const updateBimbinganTask = async (req, res) => {
             return res.status(404).json({ message: "Bimbingan not found" });
         }
 
-        const bimbingan = await prisma.bimbingan.update({
+        const bimbingan = await BimbinganModel.update({
             where: { id: parseInt(id) },
             data: {
                 topik,
@@ -325,7 +330,7 @@ const updateBimbinganTask = async (req, res) => {
 
 const getMahasiswaActiveTask = async (req, res) => {
     try {
-        const mahasiswa = await prisma.mahasiswa.findUnique({
+        const mahasiswa = await MahasiswaModel.findUnique({
             where: { userId: req.user.id }
         });
 
@@ -333,7 +338,7 @@ const getMahasiswaActiveTask = async (req, res) => {
             return res.status(404).json({ message: "Mahasiswa profile not found" });
         }
 
-        const task = await prisma.bimbingan.findFirst({
+        const task = await BimbinganModel.findFirst({
             where: { mahasiswaNim: mahasiswa.nim },
             orderBy: { id: 'desc' }
         });
@@ -347,7 +352,7 @@ const getMahasiswaActiveTask = async (req, res) => {
 
 const getMahasiswaAllTasks = async (req, res) => {
     try {
-        const mahasiswa = await prisma.mahasiswa.findUnique({
+        const mahasiswa = await MahasiswaModel.findUnique({
             where: { userId: req.user.id }
         });
 
@@ -355,7 +360,7 @@ const getMahasiswaAllTasks = async (req, res) => {
             return res.status(404).json({ message: "Mahasiswa profile not found" });
         }
 
-        const tasks = await prisma.bimbingan.findMany({
+        const tasks = await BimbinganModel.findMany({
             where: { mahasiswaNim: mahasiswa.nim },
             orderBy: { id: 'desc' },
             include: { anotasi: true }
@@ -372,13 +377,9 @@ const uploadDraftMahasiswa = async (req, res) => {
     try {
         const { id } = req.params; // Bimbingan ID
         const file = req.file;
-        const { keteranganProgres } = req.body;
+        const { keteranganProgres, isDeletedFile } = req.body;
 
-        if (!file) {
-            return res.status(400).json({ message: "No file uploaded" });
-        }
-
-        const bimbinganInfo = await prisma.bimbingan.findUnique({
+        const bimbinganInfo = await BimbinganModel.findUnique({
             where: { id: parseInt(id) },
         });
 
@@ -386,31 +387,51 @@ const uploadDraftMahasiswa = async (req, res) => {
             return res.status(404).json({ message: "Bimbingan not found" });
         }
 
+        if (!file && bimbinganInfo.status === 'ASSIGNED') {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+
+        let finalFileMahasiswa = file ? `/uploads/bimbingan/${file.filename}` : 
+                                 (isDeletedFile === "true" ? null : bimbinganInfo.fileMahasiswa);
+        let finalKeterangan = keteranganProgres !== undefined ? (keteranganProgres === "" ? null : keteranganProgres) : bimbinganInfo.keteranganProgres;
+
         if (bimbinganInfo.status === 'REVISION') {
-            const newBimbingan = await prisma.bimbingan.create({
+            const newBimbingan = await BimbinganModel.create({
                 data: {
                     mahasiswaNim: bimbinganInfo.mahasiswaNim,
                     dosenNidn: bimbinganInfo.dosenNidn,
                     topik: bimbinganInfo.topik,
                     status: 'SUBMITTED',
-                    fileMahasiswa: `/uploads/bimbingan/${file.filename}`,
-                    keteranganProgres: keteranganProgres || null,
+                    fileMahasiswa: finalFileMahasiswa,
+                    keteranganProgres: finalKeterangan,
                     jadwalBimbingan: bimbinganInfo.jadwalBimbingan,
                     versi: bimbinganInfo.versi + 1,
                     parentId: bimbinganInfo.id,
                     catatan: "Menunggu Reviu Dosen"
                 }
             });
+
+            const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
+            if (dosen && dosen.userId) {
+                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
+            }
+
             return res.json(newBimbingan);
         } else {
-            const bimbingan = await prisma.bimbingan.update({
+            const bimbingan = await BimbinganModel.update({
                 where: { id: parseInt(id) },
                 data: {
-                    fileMahasiswa: `/uploads/bimbingan/${file.filename}`,
-                    keteranganProgres: keteranganProgres || null,
+                    fileMahasiswa: finalFileMahasiswa,
+                    keteranganProgres: finalKeterangan,
                     status: 'SUBMITTED'
                 }
             });
+
+            const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
+            if (dosen && dosen.userId) {
+                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
+            }
+
             return res.json(bimbingan);
         }
     } catch (error) {
@@ -422,7 +443,7 @@ const uploadDraftMahasiswa = async (req, res) => {
 const markAsRead = async (req, res) => {
     try {
         const { id } = req.params;
-        const bimbingan = await prisma.bimbingan.update({
+        const bimbingan = await BimbinganModel.update({
             where: { id: parseInt(id) },
             data: { isReadDosen: true }
         });
@@ -439,7 +460,7 @@ const uploadRevisiDosen = async (req, res) => {
         const { status, catatan } = req.body;
         const file = req.file;
 
-        const bimbinganInfo = await prisma.bimbingan.findUnique({
+        const bimbinganInfo = await BimbinganModel.findUnique({
             where: { id: parseInt(id) },
         });
 
@@ -456,10 +477,15 @@ const uploadRevisiDosen = async (req, res) => {
             updateData.fileDosen = `/uploads/bimbingan/${file.filename}`;
         }
 
-        const bimbingan = await prisma.bimbingan.update({
+        const bimbingan = await BimbinganModel.update({
             where: { id: parseInt(id) },
             data: updateData
         });
+
+        const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
+        if (mahasiswa && mahasiswa.userId) {
+            req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
+        }
 
         res.json(bimbingan);
     } catch (error) {
@@ -473,7 +499,7 @@ const getBimbinganHistory = async (req, res) => {
         const { mahasiswaId, topik } = req.params;
         const decodedTopik = decodeURIComponent(topik);
 
-        const history = await prisma.bimbingan.findMany({
+        const history = await BimbinganModel.findMany({
             where: {
                 mahasiswaNim: mahasiswaId,
                 topik: decodedTopik
@@ -492,7 +518,7 @@ const getBimbinganHistory = async (req, res) => {
 const createAnnotation = async (req, res) => {
     try {
         const { bimbinganId, komentar, warna, posisi } = req.body;
-        const annotation = await prisma.bimbinganAnnotation.create({
+        const annotation = await BimbinganAnnotationModel.create({
             data: {
                 bimbinganId: parseInt(bimbinganId),
                 komentar,
@@ -510,7 +536,7 @@ const createAnnotation = async (req, res) => {
 const getAnnotations = async (req, res) => {
     try {
         const { bimbinganId } = req.params;
-        const annotations = await prisma.bimbinganAnnotation.findMany({
+        const annotations = await BimbinganAnnotationModel.findMany({
             where: { bimbinganId: parseInt(bimbinganId) }
         });
         res.json(annotations);
@@ -525,7 +551,7 @@ const getPreviousAnnotations = async (req, res) => {
         const { bimbinganId } = req.params;
 
         // Find current bimbingan to get its parent chain or topic info
-        const currentBimbingan = await prisma.bimbingan.findUnique({
+        const currentBimbingan = await BimbinganModel.findUnique({
             where: { id: parseInt(bimbinganId) }
         });
 
@@ -534,7 +560,7 @@ const getPreviousAnnotations = async (req, res) => {
         }
 
         // Get all annotations from older versions of the same topic
-        const previousBimbingans = await prisma.bimbingan.findMany({
+        const previousBimbingans = await BimbinganModel.findMany({
             where: {
                 mahasiswaNim: currentBimbingan.mahasiswaNim,
                 topik: currentBimbingan.topik,
@@ -572,7 +598,7 @@ const getPreviousAnnotations = async (req, res) => {
 const deleteAnnotation = async (req, res) => {
     try {
         const { id } = req.params;
-        await prisma.bimbinganAnnotation.delete({ where: { id: parseInt(id) } });
+        await BimbinganAnnotationModel.delete({ where: { id: parseInt(id) } });
         res.json({ message: "Annotation deleted successfully" });
     } catch (error) {
         console.error("Delete Annotation Error:", error);
@@ -582,7 +608,7 @@ const deleteAnnotation = async (req, res) => {
 
 const getAllProdiBimbingan = async (req, res) => {
     try {
-        const dosens = await prisma.dosen.findMany({
+        const dosens = await DosenModel.findMany({
             where: {
                 OR: [
                     { jabatan: { contains: 'Pembimbing', mode: 'insensitive' } },
@@ -598,6 +624,9 @@ const getAllProdiBimbingan = async (req, res) => {
                                 bimbingan: {
                                     orderBy: { tanggal: 'desc' },
                                     take: 1
+                                },
+                                _count: {
+                                    select: { bimbingan: true }
                                 }
                             }
                         }
