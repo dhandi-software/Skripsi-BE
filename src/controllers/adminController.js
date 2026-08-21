@@ -10,11 +10,11 @@ const isValidEmailDomain = (email) => {
 
 const createMahasiswa = async (req, res) => {
     try {
-        const { email, password, nama, nim, tahunMasuk } = req.body;
+        const { email, password, nama, nim, tahunMasuk, sksDicapai, ipk, sksNilaiD, batasStudi } = req.body;
 
         // Basic Validation
         if (!email || !password || !nama || !nim || !tahunMasuk) {
-            return res.status(400).json({ message: "All fields are required" });
+            return res.status(400).json({ message: "All required fields (email, password, nama, nim, tahunMasuk) must be provided" });
         }
 
         if (!isValidEmailDomain(email)) {
@@ -45,6 +45,15 @@ const createMahasiswa = async (req, res) => {
             return res.status(400).json({ message: "NIM sudah terdaftar di profil mahasiswa" });
         }
 
+        // Auto-calculate batasStudi if missing
+        let calculatedBatasStudi = batasStudi;
+        if (!calculatedBatasStudi && tahunMasuk) {
+            const startYear = parseInt(tahunMasuk);
+            if (!isNaN(startYear)) {
+                calculatedBatasStudi = (startYear + 6).toString();
+            }
+        }
+
         // Hash Password
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -52,13 +61,9 @@ const createMahasiswa = async (req, res) => {
         const result = await prisma.$transaction(async (prisma) => {
             const user = await prisma.user.create({
                 data: {
-                    username: nim, // Use NIM as username for Mahasiswa by default logic, or email. Let's use NIM or unique generated.
-                    // User Request didn't specify username logic, but usually it's unique. 
-                    // Let's use email prefix or NIM. existing auth might rely on username.
-                    // let's use email for now or requested field. 
-                    // Actually, let's use NIM as username to ensure uniqueness easily.
+                    username: nim,
                     password: hashedPassword,
-                    role: 'mahasiswa', // lowercase as per used convention
+                    role: 'mahasiswa',
                 }
             });
 
@@ -68,7 +73,11 @@ const createMahasiswa = async (req, res) => {
                     nim,
                     nama,
                     email,
-                    tahunMasuk
+                    tahunMasuk,
+                    sksDicapai: sksDicapai ? String(sksDicapai) : null,
+                    ipk: ipk ? String(ipk) : null,
+                    sksNilaiD: sksNilaiD ? String(sksNilaiD) : null,
+                    batasStudi: calculatedBatasStudi ? String(calculatedBatasStudi) : null
                 }
             });
 
@@ -129,13 +138,29 @@ const createMahasiswaMassal = async (req, res) => {
         );
         const usernameSet = new Set(existingUsers.map(u => u.username));
 
-        // Check for duplicates in the incoming array against the DB
+        // Check for duplicates and academic validity in the incoming array against the DB
         for (const item of users) {
             if (emailSet.has(item.email)) {
                 return res.status(400).json({ message: `Data duplikat ditemukan untuk Email: ${item.email}` });
             }
             if (usernameSet.has(item.nim) || nimSet.has(item.nim)) {
                 return res.status(400).json({ message: `Data duplikat ditemukan untuk NIM: ${item.nim}` });
+            }
+
+            if (!item.sksDicapai) {
+                return res.status(400).json({ message: `Mahasiswa ${item.nama} (${item.nim}) wajib menyertakan SKS Dicapai.` });
+            }
+            if (Number(item.sksDicapai) < 100) {
+                return res.status(400).json({ message: `Mahasiswa ${item.nama} (${item.nim}) memiliki SKS Dicapai < 100 (minimal 100 SKS).` });
+            }
+            if (!item.ipk) {
+                return res.status(400).json({ message: `Mahasiswa ${item.nama} (${item.nim}) wajib menyertakan IPK.` });
+            }
+            if (Number(item.ipk) < 2.00 || Number(item.ipk) > 4.00) {
+                return res.status(400).json({ message: `Mahasiswa ${item.nama} (${item.nim}) memiliki IPK di luar rentang 2.00 - 4.00.` });
+            }
+            if (item.sksNilaiD && Number(item.sksNilaiD) > 0) {
+                return res.status(400).json({ message: `Mahasiswa ${item.nama} (${item.nim}) memiliki ${item.sksNilaiD} SKS tidak lulus (D dan E). Mahasiswa harus memperbaikinya terlebih dahulu.` });
             }
         }
 
@@ -152,13 +177,23 @@ const createMahasiswaMassal = async (req, res) => {
                         role: 'mahasiswa',
                     }
                 });
+                let itemBatasStudi = item.batasStudi;
+                if (!itemBatasStudi && item.tahunMasuk) {
+                    const startYear = parseInt(item.tahunMasuk);
+                    if (!isNaN(startYear)) itemBatasStudi = (startYear + 6).toString();
+                }
+
                 const mahasiswa = await tx.mahasiswa.create({
                     data: {
                         userId: user.id,
                         nim: item.nim,
                         nama: item.nama,
                         email: item.email,
-                        tahunMasuk: item.tahunMasuk
+                        tahunMasuk: item.tahunMasuk,
+                        sksDicapai: item.sksDicapai ? String(item.sksDicapai) : null,
+                        ipk: item.ipk ? String(item.ipk) : null,
+                        sksNilaiD: item.sksNilaiD !== undefined && item.sksNilaiD !== null ? String(item.sksNilaiD) : null,
+                        batasStudi: itemBatasStudi ? String(itemBatasStudi) : null
                     }
                 });
                 return { user, mahasiswa };
@@ -730,7 +765,11 @@ const updateUser = async (req, res) => {
                          nim: profileData.nim,
                          email: email || undefined,
                          nomorTelepon: profileData.nomorTelepon,
-                         tahunMasuk: profileData.tahunMasuk
+                         tahunMasuk: profileData.tahunMasuk,
+                         sksDicapai: profileData.sksDicapai !== undefined ? String(profileData.sksDicapai) : undefined,
+                         ipk: profileData.ipk !== undefined ? String(profileData.ipk) : undefined,
+                         sksNilaiD: profileData.sksNilaiD !== undefined ? String(profileData.sksNilaiD) : undefined,
+                         batasStudi: profileData.batasStudi !== undefined ? String(profileData.batasStudi) : undefined
                      }
                  });
              } else if (user.role === 'dosen') {
