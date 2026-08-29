@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const { notifyJudulApproved } = require('../utils/emailService');
+const { notifyJudulApproved, notifyPengajuanRevision } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -393,12 +393,22 @@ exports.updatePengajuanStatus = async (req, res) => {
             }
         }
 
-        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa
+        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa Sesuai Status (APPROVED, REVISION, REJECTED)
         if (pengajuan.mahasiswa && pengajuan.mahasiswa.email) {
             prisma.dosen.findUnique({ where: { nidn: pengajuan.dosenNidn } }).then(targetDosen => {
                 const dosenName = targetDosen ? targetDosen.nama : "Dosen Pembimbing";
-                notifyJudulApproved(pengajuan.mahasiswa.email, pengajuan.mahasiswa.nama, pengajuan.judul, dosenName)
-                    .catch(err => console.error("Email notify error:", err.message));
+                const studentEmail = pengajuan.mahasiswa.email;
+                const studentName = pengajuan.mahasiswa.nama;
+                const title = pengajuan.judul;
+
+                if (dbStatus === 'APPROVED') {
+                    notifyJudulApproved(studentEmail, studentName, title, dosenName)
+                        .catch(err => console.error("Email approve notify error:", err.message));
+                } else if (dbStatus === 'REVISION' || dbStatus === 'REVISION_KOORDINATOR') {
+                    const deadlineStr = pengajuan.deadlineRevisi ? new Date(pengajuan.deadlineRevisi).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+                    notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr)
+                        .catch(err => console.error("Email revision notify error:", err.message));
+                }
             }).catch(e => console.error("Dosen lookup error for email:", e));
         }
 

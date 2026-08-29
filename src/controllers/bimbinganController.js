@@ -1,4 +1,5 @@
 const { BimbinganModel, DosenModel, MahasiswaModel, PengajuanJudulModel, BimbinganAnnotationModel } = require('../models');
+const { notifyBimbinganOrLogbook } = require('../utils/emailService');
 
 const getAllBimbingan = async (req, res) => {
     try {
@@ -483,8 +484,14 @@ const uploadRevisiDosen = async (req, res) => {
         });
 
         const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
-        if (mahasiswa && mahasiswa.userId) {
-            req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
+        if (mahasiswa) {
+            if (mahasiswa.userId) {
+                req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
+            }
+            if (mahasiswa.email) {
+                notifyBimbinganOrLogbook(mahasiswa.email, mahasiswa.nama, bimbinganInfo.topik || "Bimbingan KP", catatan || "Catatan revisi baru dari Dosen Pembimbing")
+                    .catch(e => console.error("Bimbingan email notify error:", e));
+            }
         }
 
         res.json(bimbingan);

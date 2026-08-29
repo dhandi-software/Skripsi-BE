@@ -266,6 +266,36 @@ async function notifyDeadlineWarning(studentEmail, studentName, eventType, title
     return await sendEmailNotification(studentEmail, subject, html);
 }
 
+/**
+ * Notifikasi Catatan Revisi Pengajuan Judul / Formulir KP oleh Dosen Pembimbing / Koordinator
+ */
+async function notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr = null) {
+    const subject = `[Perlu Revisi] Catatan Pengajuan Formulir KP/Skripsi - ${studentName}`;
+    const deadlineHtml = deadlineStr ? `
+        <div style="background:#fff7ed; border:1px solid #ffedd5; border-radius:8px; padding:12px; margin-top:12px;">
+            <p style="margin:0; font-size:13px; font-weight:700; color:#c2410c;">⏰ Batas Waktu Revisi:</p>
+            <p style="margin:2px 0 0 0; font-size:14px; font-weight:600; color:#9a3412;">${deadlineStr}</p>
+        </div>
+    ` : '';
+
+    const html = `
+        <span class="badge" style="background:#fef3c7; color:#b45309;">Status: Perlu Revisi</span>
+        <h2>Catatan Revisi Pengajuan Judul KP/Skripsi</h2>
+        <p>Yth. <strong>${studentName}</strong>,</p>
+        <p>Pengajuan formulir / judul Kerja Praktik Anda memerlukan perbaikan / revisi dari <strong>${dosenName}</strong>.</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #f59e0b; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Judul Pengajuan:</p>
+            <p style="margin:4px 0 12px 0; color:#334155; font-style:italic;">"${title}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">📝 Catatan / Masukan Revisi Dosen:</p>
+            <p style="margin:4px 0 0 0; color:#b45309; font-weight:600;">"${remarks || 'Silakan periksa kembali berkas dan formulir pengajuan Anda di portal.'}"</p>
+            ${deadlineHtml}
+        </div>
+        <p>Silakan segera melakukan perbaikan dan mengunggah kembali formulir pengajuan Anda di portal.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#f59e0b;">Perbaiki Pengajuan Sekarang</a>
+    `;
+    return await sendEmailNotification(studentEmail, subject, html);
+}
+
 module.exports = {
     sendEmailNotification,
     notifyJudulApproved,
@@ -273,5 +303,6 @@ module.exports = {
     notifyAccountCreated,
     notifyNewChatMessage,
     notifyBimbinganOrLogbook,
-    notifyDeadlineWarning
+    notifyDeadlineWarning,
+    notifyPengajuanRevision
 };
