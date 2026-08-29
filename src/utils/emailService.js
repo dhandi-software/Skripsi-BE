@@ -43,13 +43,9 @@ async function sendEmailNotification(to, subject, htmlContent) {
 
     const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <akademik@univpancasila.ac.id>';
 
-    // Base64 Logo Inline Setup (No attachment chip in Gmail)
-    const logoPath = path.join(__dirname, '../../uploads/logo_up.png');
-    let logoHtml = '';
-    if (fs.existsSync(logoPath)) {
-        const base64Data = fs.readFileSync(logoPath).toString('base64');
-        logoHtml = `<img src="data:image/png;base64,${base64Data}" alt="Logo Universitas Pancasila" style="height:64px; width:auto; margin-bottom:8px; display:inline-block;" /><br/>`;
-    }
+    // Online HTTPS Hosted Logo URL (Guaranteed to render natively without attachment chips)
+    const logoUrl = "https://i.pinimg.com/736x/06/22/bc/0622bca0fc32fe9df332c9354fcfc411.jpg";
+    const logoHtml = `<img src="${logoUrl}" alt="Logo Universitas Pancasila" style="height:64px; width:auto; border-radius:8px; margin-bottom:8px; display:inline-block;" /><br/>`;
 
     // Beautiful HTML Wrapper
     const formattedHtml = `
