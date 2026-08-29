@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const { notifySidangScheduled } = require('../utils/emailService');
 
 const applyForSidang = async (req, res) => {
     try {
@@ -160,6 +161,22 @@ const scheduleByProdi = async (req, res) => {
                 mahasiswaSeen: false // Signal update to student
             }
         });
+
+        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa
+        if (sidang && sidang.mahasiswaNim) {
+            prisma.mahasiswa.findUnique({
+                where: { nim: sidang.mahasiswaNim }
+            }).then(mhs => {
+                if (mhs && mhs.email) {
+                    const dateStr = `${tanggalSidang ? new Date(tanggalSidang).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''} ${waktuSidang || ''}`.trim();
+                    const locationStr = lokasi || 'Ruang Sidang Utama, Lantai 3';
+                    const dosenStr = userDosen ? userDosen.nama : 'Tim Penguji & Pembimbing';
+                    notifySidangScheduled(mhs.email, mhs.nama, dateStr, locationStr, dosenStr)
+                        .catch(err => console.error("Email notify error:", err.message));
+                }
+            }).catch(e => console.error("Sidang student lookup error for email:", e));
+        }
+
         res.json(sidang);
     } catch (error) {
         console.error("Schedule Prodi Error:", error);

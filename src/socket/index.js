@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const { notifyNewChatMessage } = require('../utils/emailService');
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
@@ -125,6 +126,24 @@ module.exports = (io) => {
             // Private DM
             io.to(`user_${receiverId}`).emit('receive_message', message);
             socket.emit('message_sent', message);
+
+            // Send Email Notification to Recipient
+            if (receiverId) {
+                prisma.user.findUnique({
+                    where: { id: parseInt(receiverId) },
+                    include: { mahasiswa: true, dosen: true, staf: true }
+                }).then(recUser => {
+                    const targetEmail = recUser?.mahasiswa?.email || recUser?.dosen?.email || recUser?.staf?.email;
+                    const targetName = recUser?.mahasiswa?.nama || recUser?.dosen?.nama || recUser?.staf?.nama || recUser?.username;
+                    const senderName = message.sender?.username || "Seseorang";
+                    const chatText = content || (attachmentUrl ? "Mengirimkan sebuah lampiran file" : "Pesan baru");
+                    
+                    if (targetEmail) {
+                        notifyNewChatMessage(targetEmail, targetName, senderName, chatText)
+                            .catch(e => console.error("Chat email notify error:", e));
+                    }
+                }).catch(e => console.error("Recipient lookup error for chat email:", e));
+            }
         }
 
       } catch (error) {

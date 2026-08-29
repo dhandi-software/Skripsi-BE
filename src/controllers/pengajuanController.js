@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { notifyJudulApproved } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -373,7 +374,7 @@ exports.updatePengajuanStatus = async (req, res) => {
             include: { mahasiswa: { include: { user: true } } }
         });
 
-        // Notify Mahasiswa
+        // Notify Mahasiswa via In-App Message
         if (pengajuan.mahasiswa && pengajuan.mahasiswa.user) {
             try {
                 let msgContent = `Your Title Proposal "${pengajuan.judul}" has been ${dbStatus}.`;
@@ -390,6 +391,15 @@ exports.updatePengajuanStatus = async (req, res) => {
             } catch (notifyError) {
                 console.error("Failed to notify student:", notifyError);
             }
+        }
+
+        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa
+        if (pengajuan.mahasiswa && pengajuan.mahasiswa.email) {
+            prisma.dosen.findUnique({ where: { nidn: pengajuan.dosenNidn } }).then(targetDosen => {
+                const dosenName = targetDosen ? targetDosen.nama : "Dosen Pembimbing";
+                notifyJudulApproved(pengajuan.mahasiswa.email, pengajuan.mahasiswa.nama, pengajuan.judul, dosenName)
+                    .catch(err => console.error("Email notify error:", err.message));
+            }).catch(e => console.error("Dosen lookup error for email:", e));
         }
 
         // Jika Koordinator approve (status jadi PENDING), beritahu Dosen Pembimbing

@@ -1,11 +1,44 @@
 const prisma = require('../prisma');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
 
-exports.uploadAttachment = (req, res) => {
+exports.uploadAttachment = async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded' });
     }
-    const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl, type: req.file.mimetype });
+
+    try {
+        const isImage = req.file.mimetype && req.file.mimetype.startsWith('image/');
+        
+        if (isImage) {
+            const originalPath = req.file.path;
+            const ext = path.extname(req.file.filename);
+            const baseName = path.basename(req.file.filename, ext);
+            const webpFilename = `${baseName}.webp`;
+            const webpPath = path.join(path.dirname(originalPath), webpFilename);
+
+            // Convert image to WebP format using Sharp
+            await sharp(originalPath)
+                .webp({ quality: 85 })
+                .toFile(webpPath);
+
+            // Clean up original non-webp file
+            if (originalPath !== webpPath && fs.existsSync(originalPath)) {
+                try { fs.unlinkSync(originalPath); } catch (e) {}
+            }
+
+            const fileUrl = `/uploads/${webpFilename}`;
+            return res.json({ url: fileUrl, type: 'image/webp' });
+        } else {
+            const fileUrl = `/uploads/${req.file.filename}`;
+            return res.json({ url: fileUrl, type: req.file.mimetype });
+        }
+    } catch (error) {
+        console.error("Upload Attachment Sharp Conversion Error:", error);
+        const fileUrl = `/uploads/${req.file.filename}`;
+        return res.json({ url: fileUrl, type: req.file.mimetype });
+    }
 };
 
 exports.getChatHistory = async (req, res) => {
