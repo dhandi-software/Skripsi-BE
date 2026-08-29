@@ -80,6 +80,7 @@ async function sendEmailNotification(to, subject, htmlContent) {
         const mailOptions = {
             from: emailFrom,
             to: to,
+            replyTo: 'teknikinformatikakerjapraktik@gmail.com',
             subject: subject,
             html: formattedHtml
         };
