@@ -395,21 +395,26 @@ exports.updatePengajuanStatus = async (req, res) => {
 
         // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa Sesuai Status (APPROVED, REVISION, REJECTED)
         if (pengajuan.mahasiswa && pengajuan.mahasiswa.email) {
-            prisma.dosen.findUnique({ where: { nidn: pengajuan.dosenNidn } }).then(targetDosen => {
-                const dosenName = targetDosen ? targetDosen.nama : "Dosen Pembimbing";
-                const studentEmail = pengajuan.mahasiswa.email;
-                const studentName = pengajuan.mahasiswa.nama;
-                const title = pengajuan.judul;
+            const studentEmail = pengajuan.mahasiswa.email;
+            const studentName = pengajuan.mahasiswa.nama;
+            const title = pengajuan.judul;
 
-                if (dbStatus === 'APPROVED') {
-                    notifyJudulApproved(studentEmail, studentName, title, dosenName)
-                        .catch(err => console.error("Email approve notify error:", err.message));
-                } else if (dbStatus === 'REVISION' || dbStatus === 'REVISION_KOORDINATOR') {
-                    const deadlineStr = pengajuan.deadlineRevisi ? new Date(pengajuan.deadlineRevisi).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
-                    notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr)
-                        .catch(err => console.error("Email revision notify error:", err.message));
-                }
-            }).catch(e => console.error("Dosen lookup error for email:", e));
+            prisma.dosen.findUnique({ where: { nidn: pengajuan.dosenNidn } })
+                .then(targetDosen => targetDosen ? targetDosen.nama : "Dosen Pembimbing")
+                .catch(() => "Dosen Pembimbing")
+                .then(dosenName => {
+                    console.log(`📧 [NOTIFY STATUS] Sending email for status '${dbStatus}' to ${studentEmail}`);
+                    if (dbStatus === 'APPROVED') {
+                        notifyJudulApproved(studentEmail, studentName, title, dosenName)
+                            .catch(err => console.error("Email approve notify error:", err.message));
+                    } else if (dbStatus === 'REVISION' || dbStatus === 'REVISION_KOORDINATOR' || dbStatus === 'REJECTED' || dbStatus === 'REJECTED_KOORDINATOR') {
+                        const deadlineStr = pengajuan.deadlineRevisi ? new Date(pengajuan.deadlineRevisi).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+                        notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr)
+                            .catch(err => console.error("Email revision notify error:", err.message));
+                    }
+                });
+        } else {
+            console.warn(`⚠️ [NOTIFY STATUS] Student email missing for pengajuan ID ${id}`);
         }
 
         // Jika Koordinator approve (status jadi PENDING), beritahu Dosen Pembimbing

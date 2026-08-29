@@ -290,8 +290,14 @@ const assignBimbinganTask = async (req, res) => {
         });
 
         const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: mahasiswaId } });
-        if (mahasiswa && mahasiswa.userId) {
-            req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
+        if (mahasiswa) {
+            if (mahasiswa.userId) {
+                req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
+            }
+            if (mahasiswa.email) {
+                notifyBimbinganOrLogbook(mahasiswa.email, mahasiswa.nama, topik || "Penugasan Bimbingan Baru", `Dosen Pembimbing memberikan penugasan bimbingan baru dengan jadwal: ${jadwalBimbingan ? new Date(jadwalBimbingan).toLocaleDateString('id-ID') : '-'}`)
+                    .catch(e => console.error("Bimbingan assigned email notify error:", e));
+            }
         }
 
         res.status(201).json(newBimbingan);
