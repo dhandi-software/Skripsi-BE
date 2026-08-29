@@ -127,22 +127,40 @@ module.exports = (io) => {
             io.to(`user_${receiverId}`).emit('receive_message', message);
             socket.emit('message_sent', message);
 
-            // Send Email Notification to Recipient
+            // Send Email Notification to Recipient (Filtered by Role Rules)
             if (receiverId) {
-                prisma.user.findUnique({
-                    where: { id: parseInt(receiverId) },
-                    include: { mahasiswa: true, dosen: true, staf: true }
-                }).then(recUser => {
+                Promise.all([
+                    prisma.user.findUnique({
+                        where: { id: parseInt(senderId) },
+                        include: { mahasiswa: true, dosen: true, staf: true }
+                    }),
+                    prisma.user.findUnique({
+                        where: { id: parseInt(receiverId) },
+                        include: { mahasiswa: true, dosen: true, staf: true }
+                    })
+                ]).then(([sendUser, recUser]) => {
+                    if (!sendUser || !recUser) return;
+
+                    const senderRole = (sendUser.role || '').toUpperCase();
+                    const receiverRole = (recUser.role || '').toUpperCase();
+
+                    // RULE 1: Sesama Mahasiswa -> Mahasiswa (JANGAN KIRIM NOTIFIKASI EMAIL)
+                    if (senderRole === 'MAHASISWA' && receiverRole === 'MAHASISWA') {
+                        return; // Dibatasi agar sesama mahasiswa tidak saling spaming email
+                    }
+
+                    // RULE 2: Dosen / Staf -> Mahasiswa (KIRIM EMAIL)
+                    // RULE 3: Anyone -> Dosen (KIRIM EMAIL TO DOSEN)
                     const targetEmail = recUser?.mahasiswa?.email || recUser?.dosen?.email || recUser?.staf?.email;
                     const targetName = recUser?.mahasiswa?.nama || recUser?.dosen?.nama || recUser?.staf?.nama || recUser?.username;
-                    const senderName = message.sender?.username || "Seseorang";
+                    const senderName = sendUser?.mahasiswa?.nama || sendUser?.dosen?.nama || sendUser?.staf?.nama || sendUser?.username || "Seseorang";
                     const chatText = content || (attachmentUrl ? "Mengirimkan sebuah lampiran file" : "Pesan baru");
-                    
+
                     if (targetEmail) {
                         notifyNewChatMessage(targetEmail, targetName, senderName, chatText)
                             .catch(e => console.error("Chat email notify error:", e));
                     }
-                }).catch(e => console.error("Recipient lookup error for chat email:", e));
+                }).catch(e => console.error("User lookup error for chat email:", e));
             }
         }
 

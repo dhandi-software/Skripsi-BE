@@ -38,7 +38,23 @@ async function sendEmailNotification(to, subject, htmlContent) {
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
 
-    const emailFrom = process.env.EMAIL_FROM || '"Sistem KP Universitas Pancasila" <noreply@univpancasila.ac.id>';
+    const path = require('path');
+    const fs = require('fs');
+
+    const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <akademik@univpancasila.ac.id>';
+
+    // Logo Attachment setup
+    const logoPath = path.join(__dirname, '../../uploads/logo_up.png');
+    const attachments = [];
+    let logoHtml = '';
+    if (fs.existsSync(logoPath)) {
+        attachments.push({
+            filename: 'logo_up.png',
+            path: logoPath,
+            cid: 'logoup'
+        });
+        logoHtml = `<img src="cid:logoup" alt="Logo Universitas Pancasila" style="height:64px; width:auto; margin-bottom:8px; display:inline-block;" /><br/>`;
+    }
 
     // Beautiful HTML Wrapper
     const formattedHtml = `
@@ -50,7 +66,7 @@ async function sendEmailNotification(to, subject, htmlContent) {
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
             .container { max-width: 600px; background: #ffffff; margin: 0 auto; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
             .header { background: #003366; color: #ffffff; padding: 24px; text-align: center; }
-            .header h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+            .header h1 { margin: 6px 0 0 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
             .content { padding: 30px; color: #333333; line-height: 1.6; }
             .footer { background: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
             .badge { display: inline-block; padding: 6px 12px; background: #eff6ff; color: #1d4ed8; font-weight: 600; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
@@ -60,7 +76,8 @@ async function sendEmailNotification(to, subject, htmlContent) {
     <body>
         <div class="container">
             <div class="header">
-                <h1>Universitas Pancasila</h1>
+                ${logoHtml}
+                <h1>UNIVERSITAS PANCASILA</h1>
                 <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Sistem Informasi Kerja Praktik & Skripsi</p>
             </div>
             <div class="content">
@@ -89,7 +106,8 @@ async function sendEmailNotification(to, subject, htmlContent) {
             from: emailFrom,
             to: to,
             subject: subject,
-            html: formattedHtml
+            html: formattedHtml,
+            attachments: attachments
         };
 
         const info = await getTransporter().sendMail(mailOptions);
@@ -108,15 +126,16 @@ async function notifyJudulApproved(studentEmail, studentName, title, dosenName) 
     const subject = `[Disetujui] Pengajuan Judul KP/Skripsi - ${studentName}`;
     const html = `
         <span class="badge">Status Pengajuan: Disetujui</span>
-        <h2>Selamat, ${studentName}!</h2>
-        <p>Pengajuan judul Kerja Praktik/Skripsi Anda telah <strong>DISETUJUI</strong> oleh Dosen Koordinator.</p>
-        <div style="background:#f8fafc; padding:16px; border-left:4px solid #10b981; border-radius:6px; margin:16px 0;">
-            <p style="margin:0; font-weight:600; color:#0f172a;">Judul:</p>
-            <p style="margin:4px 0 0 0; color:#334155;">"${title}"</p>
-            <p style="margin:8px 0 0 0; font-weight:600; color:#0f172a;">Dosen Pembimbing:</p>
+        <h2>Selamat! Judul KP/Skripsi Anda Disetujui</h2>
+        <p>Yth. <strong>${studentName}</strong>,</p>
+        <p>Pengajuan judul Kerja Praktik/Skripsi Anda telah resmi disetujui oleh Koordinator Program Studi.</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #003366; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Judul Disetujui:</p>
+            <p style="margin:4px 0 12px 0; color:#334155; font-style:italic;">"${title}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">Dosen Pembimbing:</p>
             <p style="margin:4px 0 0 0; color:#334155;">${dosenName}</p>
         </div>
-        <p>Silakan segera menghubungi Dosen Pembimbing Anda dan mengunduh format bimbingan di portal.</p>
+        <p>Silakan segera menghubungi Dosen Pembimbing Anda untuk memulai proses bimbingan.</p>
         <a href="https://kp.daffathan-labs.my.id/login" class="btn">Buka Portal KP</a>
     `;
     return await sendEmailNotification(studentEmail, subject, html);
@@ -202,11 +221,46 @@ async function notifyBimbinganOrLogbook(recipientEmail, recipientName, title, de
     return await sendEmailNotification(recipientEmail, subject, html);
 }
 
+/**
+ * Notifikasi Pengingat Batas Waktu / Deadline KP
+ */
+async function notifyDeadlineWarning(studentEmail, studentName, title, deadlineStr, documentsList = []) {
+    const subject = `[Deadline] Pengingat Batas Waktu ${title} - ${studentName}`;
+    const docs = documentsList.length > 0 ? documentsList : [
+        "Laporan Kerja Praktik (PDF, maks. 10 MB)",
+        "Lembar penilaian perusahaan (ditandatangani & distempel)",
+        "Surat keterangan selesai KP",
+        "Logbook harian (minimal 30 hari kerja)"
+    ];
+    
+    const html = `
+        <span class="badge" style="background:#fee2e2; color:#dc2626;">Deadline</span>
+        <div style="background:#fff7ed; border:1px solid #ffedd5; border-radius:12px; padding:18px; margin:16px 0;">
+            <p style="margin:0; font-size:16px; font-weight:700; color:#c2410c;">
+                ⚠️ Pengingat Batas Waktu
+            </p>
+            <p style="margin:4px 0 0 0; font-size:15px; font-weight:600; color:#9a3412;">
+                ${deadlineStr}
+            </p>
+        </div>
+        <p style="color:#334155; font-size:15px; line-height:1.6;">
+            Batas akhir pengumpulan <strong>${title}</strong> melalui portal SIKP adalah <span style="color:#dc2626; font-weight:700;">${deadlineStr}</span>.
+        </p>
+        <p style="font-weight:600; margin-top:20px; color:#0f172a;">Dokumen yang wajib diunggah:</p>
+        <ul style="margin:8px 0; padding-left:20px; color:#334155; line-height:1.8;">
+            ${docs.map(item => `<li>${item}</li>`).join('')}
+        </ul>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#dc2626;">Unggah Berkas Sekarang</a>
+    `;
+    return await sendEmailNotification(studentEmail, subject, html);
+}
+
 module.exports = {
     sendEmailNotification,
     notifyJudulApproved,
     notifySidangScheduled,
     notifyAccountCreated,
     notifyNewChatMessage,
-    notifyBimbinganOrLogbook
+    notifyBimbinganOrLogbook,
+    notifyDeadlineWarning
 };
