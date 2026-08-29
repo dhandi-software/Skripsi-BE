@@ -13,11 +13,8 @@ function getTransporter() {
         transporter = nodemailer.createTransport({
             host,
             port,
-            secure: port === 465, // true for 465, false for other ports
-            auth: {
-                user,
-                pass
-            }
+            secure: port === 465,
+            auth: { user, pass }
         });
     }
     return transporter;
@@ -25,9 +22,6 @@ function getTransporter() {
 
 /**
  * Send generic HTML Email Notification
- * @param {string} to - Recipient email address
- * @param {string} subject - Email subject
- * @param {string} htmlContent - Body HTML content
  */
 async function sendEmailNotification(to, subject, htmlContent) {
     if (!to || !to.includes('@')) {
@@ -37,17 +31,11 @@ async function sendEmailNotification(to, subject, htmlContent) {
 
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
+    const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <teknikinformatikakerjapraktik@gmail.com>';
 
-    const path = require('path');
-    const fs = require('fs');
-
-    const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <akademik@univpancasila.ac.id>';
-
-    // Online HTTPS Hosted Logo URL (Guaranteed to render natively without attachment chips)
     const logoUrl = "https://i.pinimg.com/736x/06/22/bc/0622bca0fc32fe9df332c9354fcfc411.jpg";
     const logoHtml = `<img src="${logoUrl}" alt="Logo Universitas Pancasila" style="height:64px; width:auto; border-radius:8px; margin-bottom:8px; display:inline-block;" /><br/>`;
 
-    // Beautiful HTML Wrapper
     const formattedHtml = `
     <!DOCTYPE html>
     <html>
@@ -60,7 +48,7 @@ async function sendEmailNotification(to, subject, htmlContent) {
             .header h1 { margin: 6px 0 0 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
             .content { padding: 30px; color: #333333; line-height: 1.6; }
             .footer { background: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
-            .badge { display: inline-block; padding: 6px 12px; background: #eff6ff; color: #1d4ed8; font-weight: 600; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }
+            .badge { display: inline-block; padding: 6px 14px; font-weight: 700; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
             .btn { display: inline-block; background: #FF7A00; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 700; margin-top: 16px; }
         </style>
     </head>
@@ -83,12 +71,8 @@ async function sendEmailNotification(to, subject, htmlContent) {
     </html>
     `;
 
-    // Dev Mode or Missing App Password fallback
     if (!smtpUser || !smtpPass) {
-        console.log(`\n📧 [EMAIL SIMULASI / LOG]`);
-        console.log(`   Kepada  : ${to}`);
-        console.log(`   Subjek  : ${subject}`);
-        console.log(`   Status  : Ready untuk terkirim asli jika SMTP_PASS diisi di .env\n`);
+        console.log(`\n📧 [EMAIL LOG] To: ${to} | Subject: ${subject}`);
         return true;
     }
 
@@ -110,23 +94,116 @@ async function sendEmailNotification(to, subject, htmlContent) {
 }
 
 /**
- * Notifikasi Pengajuan Judul KP Disetujui
+ * 1. Notifikasi Proposal KP Disetujui Final oleh Dosen Pembimbing
  */
 async function notifyJudulApproved(studentEmail, studentName, title, dosenName) {
-    const subject = `[Disetujui] Pengajuan Judul KP/Skripsi - ${studentName}`;
+    const subject = `[Proposal Disetujui] Pengajuan Judul KP/Skripsi - ${studentName}`;
     const html = `
-        <span class="badge">Status Pengajuan: Disetujui</span>
+        <span class="badge" style="background:#dcfce7; color:#15803d;">Proposal KP Disetujui</span>
         <h2>Selamat! Judul KP/Skripsi Anda Disetujui</h2>
         <p>Yth. <strong>${studentName}</strong>,</p>
-        <p>Pengajuan judul Kerja Praktik/Skripsi Anda telah resmi disetujui oleh Koordinator Program Studi.</p>
-        <div style="background:#f8fafc; padding:16px; border-left:4px solid #003366; border-radius:6px; margin:16px 0;">
+        <p>Pengajuan judul Kerja Praktik/Skripsi Anda telah resmi disetujui secara final oleh Dosen Pembimbing Anda.</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #16a34a; border-radius:6px; margin:16px 0;">
             <p style="margin:0; font-weight:600; color:#0f172a;">Judul Disetujui:</p>
             <p style="margin:4px 0 12px 0; color:#334155; font-style:italic;">"${title}"</p>
             <p style="margin:0; font-weight:600; color:#0f172a;">Dosen Pembimbing:</p>
             <p style="margin:4px 0 0 0; color:#334155;">${dosenName}</p>
         </div>
-        <p>Silakan segera menghubungi Dosen Pembimbing Anda untuk memulai proses bimbingan.</p>
+        <p>Silakan buka portal untuk melihat lembar penugasan dan memulai aktivitas bimbingan.</p>
         <a href="https://kp.daffathan-labs.my.id/login" class="btn">Buka Portal KP</a>
+    `;
+    return await sendEmailNotification(studentEmail, subject, html);
+}
+
+/**
+ * 2. Notifikasi Proposal KP Disetujui Koordinator & Diteruskan ke Pembimbing
+ */
+async function notifyPengajuanForwardedToDosen(studentEmail, studentName, title, dosenName) {
+    const subject = `[Disetujui Koordinator] Pengajuan Judul KP - ${studentName}`;
+    const html = `
+        <span class="badge" style="background:#e0e7ff; color:#4338ca;">Persetujuan Koordinator</span>
+        <h2>Pengajuan Judul KP Disetujui Koordinator</h2>
+        <p>Yth. <strong>${studentName}</strong>,</p>
+        <p>Pengajuan judul Kerja Praktik Anda telah disetujui oleh Koordinator Prodi dan diteruskan ke Dosen Pembimbing.</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #4f46e5; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Judul Usulan:</p>
+            <p style="margin:4px 0 12px 0; color:#334155; font-style:italic;">"${title}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">Dosen Pembimbing Terpilih:</p>
+            <p style="margin:4px 0 0 0; color:#334155;">${dosenName}</p>
+        </div>
+        <p>Saat ini usulan Anda sedang menunggu persetujuan akhir dari Dosen Pembimbing.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#4f46e5;">Pantau Status Pengajuan</a>
+    `;
+    return await sendEmailNotification(studentEmail, subject, html);
+}
+
+/**
+ * 3. Notifikasi Penugasan Bimbingan Baru oleh Dosen Pembimbing
+ */
+async function notifyTaskAssigned(studentEmail, studentName, dosenName, topik, jadwalBimbingan) {
+    const subject = `[Penugasan Bimbingan Baru] - ${topik}`;
+    const jadwalStr = jadwalBimbingan ? new Date(jadwalBimbingan).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : 'Sesuai Kesepakatan';
+    const html = `
+        <span class="badge" style="background:#e0e7ff; color:#3730a3;">Penugasan Bimbingan</span>
+        <h2>Penugasan Bimbingan Baru Dari Dosen Pembimbing</h2>
+        <p>Yth. <strong>${studentName}</strong>,</p>
+        <p>Dosen Pembimbing Anda (<strong>${dosenName}</strong>) telah menetapkan tugas/topik bimbingan baru:</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #4338ca; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">📌 Topik / Tugas Bimbingan:</p>
+            <p style="margin:4px 0 12px 0; color:#1e1b4b; font-weight:700; font-size:15px;">"${topik}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">📅 Jadwal Bimbingan Target:</p>
+            <p style="margin:4px 0 0 0; color:#3730a3; font-weight:600;">${jadwalStr}</p>
+        </div>
+        <p>Silakan siapkan draft laporan Anda dan unggah berkas melalui portal SIKP.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#4338ca;">Buka Lembar Bimbingan</a>
+    `;
+    return await sendEmailNotification(studentEmail, subject, html);
+}
+
+/**
+ * 4. Notifikasi Draft Bimbingan Masuk (Dikirim dari Mahasiswa ke Dosen)
+ */
+async function notifyDraftUploaded(dosenEmail, dosenName, studentName, studentNim, topik, keteranganProgres) {
+    const subject = `[Draft Bimbingan Masuk] ${studentName} (${studentNim})`;
+    const html = `
+        <span class="badge" style="background:#e0f2fe; color:#0369a1;">Draft Bimbingan Masuk</span>
+        <h2>Berkas Draft Bimbingan Baru Diterima</h2>
+        <p>Yth. <strong>${dosenName}</strong>,</p>
+        <p>Mahasiswa bimbingan Anda (<strong>${studentName}</strong> - NIM ${studentNim}) telah mengunggah berkas/draft bimbingan baru:</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #0284c7; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Topik Bimbingan:</p>
+            <p style="margin:4px 0 12px 0; color:#0369a1; font-weight:700;">"${topik}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">📝 Keterangan / Catatan Mahasiswa:</p>
+            <p style="margin:4px 0 0 0; color:#334155; font-style:italic;">"${keteranganProgres || 'Draft berkas bimbingan telah diunggah.'}"</p>
+        </div>
+        <p>Silakan buka portal untuk memeriksa berkas dan memberikan reviu/catatan bimbingan.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#0284c7;">Tinjau Draft Bimbingan</a>
+    `;
+    return await sendEmailNotification(dosenEmail, subject, html);
+}
+
+/**
+ * 5. Notifikasi Hasil Reviu Bimbingan (Dikirim dari Dosen ke Mahasiswa)
+ */
+async function notifyBimbinganReviewed(studentEmail, studentName, dosenName, topik, status, catatan) {
+    const subject = `[Hasil Reviu Bimbingan] - ${topik}`;
+    const statusText = status === 'APPROVED' ? 'Disetujui' : 'Perlu Revisi';
+    const badgeColor = status === 'APPROVED' ? 'background:#dcfce7; color:#15803d;' : 'background:#fef3c7; color:#b45309;';
+    const borderColor = status === 'APPROVED' ? '#16a34a' : '#f59e0b';
+
+    const html = `
+        <span class="badge" style="${badgeColor}">Reviu Bimbingan: ${statusText}</span>
+        <h2>Hasil Reviu Bimbingan dari ${dosenName}</h2>
+        <p>Yth. <strong>${studentName}</strong>,</p>
+        <p>Dosen Pembimbing Anda telah memeriksa dan memberikan catatan reviu untuk topik: <strong>"${topik}"</strong>.</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid ${borderColor}; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Topik Bimbingan:</p>
+            <p style="margin:4px 0 12px 0; color:#1e293b; font-weight:700;">"${topik}"</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">💬 Catatan Reviu / Masukan Dosen:</p>
+            <p style="margin:4px 0 0 0; color:#334155; font-weight:600;">"${catatan || 'Silakan periksa lembar bimbingan di portal.'}"</p>
+        </div>
+        <p>Silakan buka portal untuk membaca detail catatan dan mengunduh berkas reviu.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#FF7A00;">Lihat Catatan Reviu</a>
     `;
     return await sendEmailNotification(studentEmail, subject, html);
 }
@@ -137,7 +214,7 @@ async function notifyJudulApproved(studentEmail, studentName, title, dosenName) 
 async function notifySidangScheduled(studentEmail, studentName, dateStr, location, dosenNames) {
     const subject = `[Jadwal Resmi] Sidang KP/Skripsi - ${studentName}`;
     const html = `
-        <span class="badge" style="background:#f0fdf4; color:#15803d;">Status Sidang: Dijadwalkan</span>
+        <span class="badge" style="background:#f0fdf4; color:#15803d;">Jadwal Sidang Resmi</span>
         <h2>Yth. ${studentName},</h2>
         <p>Jadwal pelaksanaan Sidang Kerja Praktik/Skripsi Anda telah resmi ditetapkan oleh Koordinator KP.</p>
         <div style="background:#f8fafc; padding:16px; border-left:4px solid #FF7A00; border-radius:6px; margin:16px 0;">
@@ -160,6 +237,7 @@ async function notifySidangScheduled(studentEmail, studentName, dateStr, locatio
 async function notifyAccountCreated(userEmail, name, role, rawPassword) {
     const subject = `[Akun Resmi] Pendaftaran Akun Portal KP Universitas Pancasila`;
     const html = `
+        <span class="badge" style="background:#e0e7ff; color:#3730a3;">Akun Portal KP</span>
         <h2>Selamat Datang, ${name}!</h2>
         <p>Akun portal Kerja Praktik & Skripsi Universitas Pancasila Anda telah berhasil dibuat sebagai <strong>${role}</strong>.</p>
         <div style="background:#f8fafc; padding:16px; border-left:4px solid #003366; border-radius:6px; margin:16px 0;">
@@ -178,12 +256,12 @@ async function notifyAccountCreated(userEmail, name, role, rawPassword) {
  * Notifikasi Pesan Chat Baru
  */
 async function notifyNewChatMessage(recipientEmail, recipientName, senderName, messageText) {
-    const subject = `[Pesan Baru] dari ${senderName} - Portal KP Universitas Pancasila`;
+    const subject = `[Pesan Chat Baru] dari ${senderName} - Portal KP Universitas Pancasila`;
     const previewMessage = messageText.length > 150 ? messageText.substring(0, 150) + "..." : messageText;
     const html = `
-        <span class="badge" style="background:#eff6ff; color:#1d4ed8;">Chat Masuk</span>
+        <span class="badge" style="background:#eff6ff; color:#1d4ed8;">Pesan Chat Masuk</span>
         <h2>Halo, ${recipientName}!</h2>
-        <p>Anda menerima pesan baru dari <strong>${senderName}</strong> pada sistem portal Kerja Praktik:</p>
+        <p>Anda menerima pesan chat baru dari <strong>${senderName}</strong> pada sistem portal Kerja Praktik:</p>
         <div style="background:#f8fafc; padding:16px; border-left:4px solid #0284c7; border-radius:6px; margin:16px 0; font-style:italic;">
             "${previewMessage}"
         </div>
@@ -194,14 +272,19 @@ async function notifyNewChatMessage(recipientEmail, recipientName, senderName, m
 }
 
 /**
- * Notifikasi Bimbingan / Logbook Baru
+ * Notifikasi Bimbingan / Logbook (Dynamic Fallback)
  */
-async function notifyBimbinganOrLogbook(recipientEmail, recipientName, title, details) {
-    const subject = `[Update Bimbingan/Logbook] - ${title}`;
+async function notifyBimbinganOrLogbook(recipientEmail, recipientName, title, details, options = {}) {
+    const badgeText = options.badgeText || "Aktivitas Bimbingan";
+    const badgeBg = options.badgeBg || "#fef3c7";
+    const badgeColor = options.badgeColor || "#b45309";
+    const subjectPrefix = options.subjectPrefix || "[Bimbingan KP]";
+
+    const subject = `${subjectPrefix} ${title}`;
     const html = `
-        <span class="badge" style="background:#fef3c7; color:#b45309;">Bimbingan & Logbook</span>
+        <span class="badge" style="background:${badgeBg}; color:${badgeColor};">${badgeText}</span>
         <h2>Halo, ${recipientName}!</h2>
-        <p>Ada pembaruan pada aktivitas bimbingan / logbook Anda:</p>
+        <p>Ada pembaruan pada aktivitas bimbingan Anda:</p>
         <div style="background:#f8fafc; padding:16px; border-left:4px solid #f59e0b; border-radius:6px; margin:16px 0;">
             <p style="margin:0; font-weight:600; color:#0f172a;">${title}</p>
             <p style="margin:4px 0 0 0; color:#334155;">${details}</p>
@@ -216,9 +299,8 @@ async function notifyBimbinganOrLogbook(recipientEmail, recipientName, title, de
  */
 async function notifyDeadlineWarning(studentEmail, studentName, eventType, title, deadlineStr, documentsList = []) {
     const typeName = eventType || "Jadwal Akademik";
-    const subject = `[Deadline] Pengingat Batas Waktu ${typeName} - ${studentName}`;
+    const subject = `[Batas Waktu] Pengingat Deadline ${typeName} - ${studentName}`;
     
-    // Default document/requirements list based on program type
     let docs = documentsList;
     if (!docs || docs.length === 0) {
         if (typeName.toLowerCase().includes("bimbingan")) {
@@ -270,7 +352,7 @@ async function notifyDeadlineWarning(studentEmail, studentName, eventType, title
  * Notifikasi Catatan Revisi Pengajuan Judul / Formulir KP oleh Dosen Pembimbing / Koordinator
  */
 async function notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr = null) {
-    const subject = `[Perlu Revisi] Catatan Pengajuan Formulir KP/Skripsi - ${studentName}`;
+    const subject = `[Revisi Proposal KP] Catatan Perbaikan - ${studentName}`;
     const deadlineHtml = deadlineStr ? `
         <div style="background:#fff7ed; border:1px solid #ffedd5; border-radius:8px; padding:12px; margin-top:12px;">
             <p style="margin:0; font-size:13px; font-weight:700; color:#c2410c;">⏰ Batas Waktu Revisi:</p>
@@ -279,7 +361,7 @@ async function notifyPengajuanRevision(studentEmail, studentName, title, dosenNa
     ` : '';
 
     const html = `
-        <span class="badge" style="background:#fef3c7; color:#b45309;">Status: Perlu Revisi</span>
+        <span class="badge" style="background:#fef3c7; color:#b45309;">Revisi Proposal KP</span>
         <h2>Catatan Revisi Pengajuan Judul KP/Skripsi</h2>
         <p>Yth. <strong>${studentName}</strong>,</p>
         <p>Pengajuan formulir / judul Kerja Praktik Anda memerlukan perbaikan / revisi dari <strong>${dosenName}</strong>.</p>
@@ -299,6 +381,10 @@ async function notifyPengajuanRevision(studentEmail, studentName, title, dosenNa
 module.exports = {
     sendEmailNotification,
     notifyJudulApproved,
+    notifyPengajuanForwardedToDosen,
+    notifyTaskAssigned,
+    notifyDraftUploaded,
+    notifyBimbinganReviewed,
     notifySidangScheduled,
     notifyAccountCreated,
     notifyNewChatMessage,

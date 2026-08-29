@@ -1,5 +1,5 @@
 const { BimbinganModel, DosenModel, MahasiswaModel, PengajuanJudulModel, BimbinganAnnotationModel } = require('../models');
-const { notifyBimbinganOrLogbook } = require('../utils/emailService');
+const { notifyTaskAssigned, notifyDraftUploaded, notifyBimbinganReviewed, notifyBimbinganOrLogbook } = require('../utils/emailService');
 
 const getAllBimbingan = async (req, res) => {
     try {
@@ -295,7 +295,7 @@ const assignBimbinganTask = async (req, res) => {
                 req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
             }
             if (mahasiswa.email) {
-                notifyBimbinganOrLogbook(mahasiswa.email, mahasiswa.nama, topik || "Penugasan Bimbingan Baru", `Dosen Pembimbing memberikan penugasan bimbingan baru dengan jadwal: ${jadwalBimbingan ? new Date(jadwalBimbingan).toLocaleDateString('id-ID') : '-'}`)
+                notifyTaskAssigned(mahasiswa.email, mahasiswa.nama, dosen.nama, topik || "Tugas Bimbingan KP", jadwalBimbingan)
                     .catch(e => console.error("Bimbingan assigned email notify error:", e));
             }
         }
@@ -427,11 +427,13 @@ const uploadDraftMahasiswa = async (req, res) => {
                     req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
                 }
                 if (dosen.email) {
-                    notifyBimbinganOrLogbook(
+                    notifyDraftUploaded(
                         dosen.email,
                         dosen.nama,
-                        `[Draft Masuk] ${bimbinganInfo.topik || "Bimbingan KP"}`,
-                        `Mahasiswa ${mhsName} (${bimbinganInfo.mahasiswaNim}) telah mengunggah berkas/draft bimbingan baru untuk topik "${bimbinganInfo.topik}". Silakan buka portal untuk meninjau.`
+                        mhsName,
+                        bimbinganInfo.mahasiswaNim,
+                        bimbinganInfo.topik,
+                        finalKeterangan
                     ).catch(e => console.error("Email notification to dosen error:", e));
                 }
             }
@@ -456,11 +458,13 @@ const uploadDraftMahasiswa = async (req, res) => {
                     req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
                 }
                 if (dosen.email) {
-                    notifyBimbinganOrLogbook(
+                    notifyDraftUploaded(
                         dosen.email,
                         dosen.nama,
-                        `[Draft Masuk] ${bimbinganInfo.topik || "Bimbingan KP"}`,
-                        `Mahasiswa ${mhsName} (${bimbinganInfo.mahasiswaNim}) telah mengunggah berkas/draft bimbingan baru untuk topik "${bimbinganInfo.topik}". Silakan buka portal untuk meninjau.`
+                        mhsName,
+                        bimbinganInfo.mahasiswaNim,
+                        bimbinganInfo.topik,
+                        finalKeterangan
                     ).catch(e => console.error("Email notification to dosen error:", e));
                 }
             }
@@ -515,14 +519,23 @@ const uploadRevisiDosen = async (req, res) => {
             data: updateData
         });
 
+        const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
+        const dosenName = dosen ? dosen.nama : "Dosen Pembimbing";
+
         const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
         if (mahasiswa) {
             if (mahasiswa.userId) {
                 req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
             }
             if (mahasiswa.email) {
-                notifyBimbinganOrLogbook(mahasiswa.email, mahasiswa.nama, bimbinganInfo.topik || "Bimbingan KP", catatan || "Catatan revisi baru dari Dosen Pembimbing")
-                    .catch(e => console.error("Bimbingan email notify error:", e));
+                notifyBimbinganReviewed(
+                    mahasiswa.email,
+                    mahasiswa.nama,
+                    dosenName,
+                    bimbinganInfo.topik || "Bimbingan KP",
+                    status || 'REVISION',
+                    catatan || "Catatan revisi baru dari Dosen Pembimbing"
+                ).catch(e => console.error("Bimbingan email notify error:", e));
             }
         }
 

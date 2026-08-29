@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const { notifyJudulApproved, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
+const { notifyJudulApproved, notifyPengajuanForwardedToDosen, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -417,6 +417,9 @@ exports.updatePengajuanStatus = async (req, res) => {
                     if (dbStatus === 'APPROVED') {
                         notifyJudulApproved(studentEmail, studentName, title, dosenName)
                             .catch(err => console.error("Email approve notify error:", err.message));
+                    } else if (dbStatus === 'PENDING') {
+                        notifyPengajuanForwardedToDosen(studentEmail, studentName, title, dosenName)
+                            .catch(err => console.error("Email forwarded notify error:", err.message));
                     } else if (dbStatus === 'REVISION' || dbStatus === 'REVISION_KOORDINATOR' || dbStatus === 'REJECTED' || dbStatus === 'REJECTED_KOORDINATOR') {
                         const deadlineStr = pengajuan.deadlineRevisi ? new Date(pengajuan.deadlineRevisi).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
                         notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr)
