@@ -43,17 +43,12 @@ async function sendEmailNotification(to, subject, htmlContent) {
 
     const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <akademik@univpancasila.ac.id>';
 
-    // Logo Attachment setup
+    // Base64 Logo Inline Setup (No attachment chip in Gmail)
     const logoPath = path.join(__dirname, '../../uploads/logo_up.png');
-    const attachments = [];
     let logoHtml = '';
     if (fs.existsSync(logoPath)) {
-        attachments.push({
-            filename: 'logo_up.png',
-            path: logoPath,
-            cid: 'logoup'
-        });
-        logoHtml = `<img src="cid:logoup" alt="Logo Universitas Pancasila" style="height:64px; width:auto; margin-bottom:8px; display:inline-block;" /><br/>`;
+        const base64Data = fs.readFileSync(logoPath).toString('base64');
+        logoHtml = `<img src="data:image/png;base64,${base64Data}" alt="Logo Universitas Pancasila" style="height:64px; width:auto; margin-bottom:8px; display:inline-block;" /><br/>`;
     }
 
     // Beautiful HTML Wrapper
@@ -106,8 +101,7 @@ async function sendEmailNotification(to, subject, htmlContent) {
             from: emailFrom,
             to: to,
             subject: subject,
-            html: formattedHtml,
-            attachments: attachments
+            html: formattedHtml
         };
 
         const info = await getTransporter().sendMail(mailOptions);
@@ -222,31 +216,52 @@ async function notifyBimbinganOrLogbook(recipientEmail, recipientName, title, de
 }
 
 /**
- * Notifikasi Pengingat Batas Waktu / Deadline KP
+ * Notifikasi Pengingat Batas Waktu / Deadline Dinamis berdasarkan Program & Aktivitas
  */
-async function notifyDeadlineWarning(studentEmail, studentName, title, deadlineStr, documentsList = []) {
-    const subject = `[Deadline] Pengingat Batas Waktu ${title} - ${studentName}`;
-    const docs = documentsList.length > 0 ? documentsList : [
-        "Laporan Kerja Praktik (PDF, maks. 10 MB)",
-        "Lembar penilaian perusahaan (ditandatangani & distempel)",
-        "Surat keterangan selesai KP",
-        "Logbook harian (minimal 30 hari kerja)"
-    ];
+async function notifyDeadlineWarning(studentEmail, studentName, eventType, title, deadlineStr, documentsList = []) {
+    const typeName = eventType || "Jadwal Akademik";
+    const subject = `[Deadline] Pengingat Batas Waktu ${typeName} - ${studentName}`;
+    
+    // Default document/requirements list based on program type
+    let docs = documentsList;
+    if (!docs || docs.length === 0) {
+        if (typeName.toLowerCase().includes("bimbingan")) {
+            docs = [
+                "Draft Bab Laporan Bimbingan KP/Skripsi",
+                "Catatan revisi & masukan dari Dosen Pembimbing",
+                "Logbook aktivitas bimbingan harian"
+            ];
+        } else if (typeName.toLowerCase().includes("sidang")) {
+            docs = [
+                "Laporan KP/Skripsi final yang telah disetujui Dosen Pembimbing",
+                "Formulir persetujuan pendaftaran sidang",
+                "Transkrip nilai SKS kumulatif (minimal 100 SKS)"
+            ];
+        } else {
+            docs = [
+                "Laporan Kerja Praktik (PDF, maks. 10 MB)",
+                "Lembar penilaian perusahaan (ditandatangani & distempel)",
+                "Surat keterangan selesai KP",
+                "Logbook harian (minimal 30 hari kerja)"
+            ];
+        }
+    }
     
     const html = `
-        <span class="badge" style="background:#fee2e2; color:#dc2626;">Deadline</span>
+        <span class="badge" style="background:#fee2e2; color:#dc2626;">Deadline ${typeName}</span>
         <div style="background:#fff7ed; border:1px solid #ffedd5; border-radius:12px; padding:18px; margin:16px 0;">
             <p style="margin:0; font-size:16px; font-weight:700; color:#c2410c;">
-                ⚠️ Pengingat Batas Waktu
+                ⚠️ Pengingat Batas Waktu ${typeName}
             </p>
             <p style="margin:4px 0 0 0; font-size:15px; font-weight:600; color:#9a3412;">
                 ${deadlineStr}
             </p>
         </div>
         <p style="color:#334155; font-size:15px; line-height:1.6;">
-            Batas akhir pengumpulan <strong>${title}</strong> melalui portal SIKP adalah <span style="color:#dc2626; font-weight:700;">${deadlineStr}</span>.
+            Yth. <strong>${studentName}</strong>,<br/>
+            Batas akhir pengumpulan <strong>${title || typeName}</strong> melalui portal SIKP adalah <span style="color:#dc2626; font-weight:700;">${deadlineStr}</span>.
         </p>
-        <p style="font-weight:600; margin-top:20px; color:#0f172a;">Dokumen yang wajib diunggah:</p>
+        <p style="font-weight:600; margin-top:20px; color:#0f172a;">Dokumen / Berkas yang wajib diunggah:</p>
         <ul style="margin:8px 0; padding-left:20px; color:#334155; line-height:1.8;">
             ${docs.map(item => `<li>${item}</li>`).join('')}
         </ul>
