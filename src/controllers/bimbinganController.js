@@ -419,8 +419,21 @@ const uploadDraftMahasiswa = async (req, res) => {
             });
 
             const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
-            if (dosen && dosen.userId) {
-                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
+            const mhs = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
+            const mhsName = mhs ? mhs.nama : "Mahasiswa";
+
+            if (dosen) {
+                if (dosen.userId) {
+                    req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
+                }
+                if (dosen.email) {
+                    notifyBimbinganOrLogbook(
+                        dosen.email,
+                        dosen.nama,
+                        `[Draft Masuk] ${bimbinganInfo.topik || "Bimbingan KP"}`,
+                        `Mahasiswa ${mhsName} (${bimbinganInfo.mahasiswaNim}) telah mengunggah berkas/draft bimbingan baru untuk topik "${bimbinganInfo.topik}". Silakan buka portal untuk meninjau.`
+                    ).catch(e => console.error("Email notification to dosen error:", e));
+                }
             }
 
             return res.json(newBimbingan);
@@ -435,8 +448,21 @@ const uploadDraftMahasiswa = async (req, res) => {
             });
 
             const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
-            if (dosen && dosen.userId) {
-                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
+            const mhs = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
+            const mhsName = mhs ? mhs.nama : "Mahasiswa";
+
+            if (dosen) {
+                if (dosen.userId) {
+                    req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
+                }
+                if (dosen.email) {
+                    notifyBimbinganOrLogbook(
+                        dosen.email,
+                        dosen.nama,
+                        `[Draft Masuk] ${bimbinganInfo.topik || "Bimbingan KP"}`,
+                        `Mahasiswa ${mhsName} (${bimbinganInfo.mahasiswaNim}) telah mengunggah berkas/draft bimbingan baru untuk topik "${bimbinganInfo.topik}". Silakan buka portal untuk meninjau.`
+                    ).catch(e => console.error("Email notification to dosen error:", e));
+                }
             }
 
             return res.json(bimbingan);

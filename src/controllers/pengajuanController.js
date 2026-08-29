@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const { notifyJudulApproved, notifyPengajuanRevision } = require('../utils/emailService');
+const { notifyJudulApproved, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -158,15 +158,25 @@ exports.createPengajuan = async (req, res) => {
                      include: { user: true }
                  });
                 
-                 if (dosen && dosen.user) {
-                     await prisma.message.create({
-                        data: {
-                            senderId: req.user.id,
-                            receiverId: dosen.user.id,
-                            content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
-                            isRead: false
-                        }
-                    });
+                 if (dosen) {
+                     if (dosen.user) {
+                         await prisma.message.create({
+                            data: {
+                                senderId: req.user.id,
+                                receiverId: dosen.user.id,
+                                content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
+                                isRead: false
+                            }
+                        });
+                     }
+                     if (dosen.email) {
+                         notifyBimbinganOrLogbook(
+                             dosen.email,
+                             dosen.nama,
+                             `[Pengajuan Masuk] Usulan Judul KP Baru - ${mahasiswa.nama}`,
+                             `Mahasiswa ${mahasiswa.nama} (${mahasiswa.nim}) telah mengusulkan judul Kerja Praktik baru: "${judul}". Silakan periksa portal untuk meninjau.`
+                         ).catch(e => console.error("Email notify dosen error:", e));
+                     }
                  }
             }
         } catch (notifyError) {
