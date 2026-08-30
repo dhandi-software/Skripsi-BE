@@ -1,4 +1,7 @@
 const prisma = require('../prisma');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
 
 /**
  * @api {get} /download Get all Download materials
@@ -88,6 +91,13 @@ const getDownloadById = async (req, res) => {
 const createDownload = async (req, res) => {
     try {
         const { title, description, fileUrl, fileType } = req.body;
+        if (!title || !title.trim()) {
+            return res.status(400).json({ message: "Judul materi wajib diisi" });
+        }
+        if (title.trim().length > 150) {
+            return res.status(400).json({ message: "Judul materi maksimal 150 karakter" });
+        }
+
         let dosen = await prisma.dosen.findUnique({
             where: { userId: parseInt(req.user.id) }
         });
@@ -100,7 +110,7 @@ const createDownload = async (req, res) => {
 
         const download = await prisma.download.create({
             data: {
-                title,
+                title: title.trim(),
                 description,
                 fileUrl,
                 fileType,
@@ -120,10 +130,14 @@ const updateDownload = async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, fileUrl, fileType } = req.body;
+
+        if (title && title.trim().length > 150) {
+            return res.status(400).json({ message: "Judul materi maksimal 150 karakter" });
+        }
         
         const download = await prisma.download.update({
             where: { id: parseInt(id) },
-            data: { title, description, fileUrl, fileType }
+            data: { title: title ? title.trim() : undefined, description, fileUrl, fileType }
         });
         res.json(download);
     } catch (error) {
@@ -149,8 +163,27 @@ const uploadFile = async (req, res) => {
             return res.status(400).json({ message: "No file uploaded" });
         }
         
-        // Return relative path for static serving
-        const fileUrl = `/uploads/${req.file.filename}`;
+        const isImage = req.file.mimetype && req.file.mimetype.startsWith('image/');
+        let finalFilename = req.file.filename;
+
+        if (isImage) {
+            const originalPath = req.file.path;
+            const ext = path.extname(req.file.filename);
+            const baseName = path.basename(req.file.filename, ext);
+            const webpFilename = `${baseName}.webp`;
+            const webpPath = path.join(path.dirname(originalPath), webpFilename);
+
+            await sharp(originalPath)
+                .webp({ quality: 85 })
+                .toFile(webpPath);
+
+            if (originalPath !== webpPath && fs.existsSync(originalPath)) {
+                try { fs.unlinkSync(originalPath); } catch (e) {}
+            }
+            finalFilename = webpFilename;
+        }
+
+        const fileUrl = `/uploads/${finalFilename}`;
         res.json({ 
             url: fileUrl,
             originalName: req.file.originalname,
@@ -158,7 +191,12 @@ const uploadFile = async (req, res) => {
         });
     } catch (error) {
         console.error("Upload File Error:", error);
-        res.status(500).json({ error: error.message });
+        const fileUrl = `/uploads/${req.file.filename}`;
+        res.json({ 
+            url: fileUrl,
+            originalName: req.file.originalname,
+            size: req.file.size
+        });
     }
 };
 

@@ -1,5 +1,5 @@
 const prisma = require('../prisma');
-const { notifySidangScheduled } = require('../utils/emailService');
+const { notifySidangScheduled, notifyBimbinganOrLogbook } = require('../utils/emailService');
 
 const applyForSidang = async (req, res) => {
     try {
@@ -162,19 +162,49 @@ const scheduleByProdi = async (req, res) => {
             }
         });
 
-        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa
+        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa & Dosen Penguji
         if (sidang && sidang.mahasiswaNim) {
+            const dateStr = `${tanggalSidang ? new Date(tanggalSidang).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''} ${waktuSidang || ''}`.trim();
+            const locationStr = lokasi || 'Ruang Sidang Utama, Lantai 3';
+            const dosenStr = userDosen ? userDosen.nama : 'Tim Penguji & Pembimbing';
+
             prisma.mahasiswa.findUnique({
                 where: { nim: sidang.mahasiswaNim }
             }).then(mhs => {
                 if (mhs && mhs.email) {
-                    const dateStr = `${tanggalSidang ? new Date(tanggalSidang).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : ''} ${waktuSidang || ''}`.trim();
-                    const locationStr = lokasi || 'Ruang Sidang Utama, Lantai 3';
-                    const dosenStr = userDosen ? userDosen.nama : 'Tim Penguji & Pembimbing';
                     notifySidangScheduled(mhs.email, mhs.nama, dateStr, locationStr, dosenStr)
                         .catch(err => console.error("Email notify error:", err.message));
                 }
             }).catch(e => console.error("Sidang student lookup error for email:", e));
+
+            // Jika ada penguji NIDN, kirim notifikasi ke Dosen Penguji
+            if (pengujiId) {
+                prisma.dosen.findUnique({
+                    where: { nidn: String(pengujiId) },
+                    include: { user: true }
+                }).then(pengosen => {
+                    if (pengosen) {
+                        if (pengosen.user) {
+                            prisma.message.create({
+                                data: {
+                                    senderId: req.user.id,
+                                    receiverId: pengosen.user.id,
+                                    content: `Anda ditugaskan sebagai Dosen Penguji Sidang pada ${dateStr} di ${locationStr}.`,
+                                    isRead: false
+                                }
+                            }).catch(e => console.error("Penguji in-app msg error:", e));
+                        }
+                        if (pengosen.email) {
+                            notifyBimbinganOrLogbook(
+                                pengosen.email,
+                                pengosen.nama,
+                                `[Penugasan Penguji Sidang] Jadwal Sidang KP/Skripsi`,
+                                `Anda ditugaskan sebagai Dosen Penguji Sidang KP/Skripsi pada ${dateStr} di ${locationStr}. Silakan buka portal SIKP untuk detailnya.`
+                            ).catch(e => console.error("Email notify penguji error:", e));
+                        }
+                    }
+                }).catch(e => console.error("Penguji lookup error:", e));
+            }
         }
 
         res.json(sidang);

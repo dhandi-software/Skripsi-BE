@@ -254,20 +254,29 @@ async function notifyAccountCreated(userEmail, name, role, rawPassword) {
 }
 
 /**
- * Notifikasi Pesan Chat Baru
+ * Notifikasi Pesan Chat / Lampiran Dokumen Baru (Dinamis)
  */
-async function notifyNewChatMessage(recipientEmail, recipientName, senderName, messageText) {
-    const subject = `[Pesan Chat Baru] dari ${senderName} - Portal KP Universitas Pancasila`;
+async function notifyNewChatMessage(recipientEmail, recipientName, senderName, messageText, options = {}) {
+    const isAttachment = options.isAttachment || messageText.toLowerCase().includes("lampiran") || messageText.toLowerCase().includes("file");
+    const category = options.category || (isAttachment ? "Lampiran Dokumen" : "Pesan Chat");
+
+    const subject = `[${category} Baru] dari ${senderName} - Portal KP Universitas Pancasila`;
     const previewMessage = messageText.length > 150 ? messageText.substring(0, 150) + "..." : messageText;
+    const badgeText = `${category} Masuk`;
+    const badgeBg = isAttachment ? "#f0fdf4" : "#eff6ff";
+    const badgeColor = isAttachment ? "#15803d" : "#1d4ed8";
+    const borderColor = isAttachment ? "#22c55e" : "#0284c7";
+    const btnText = isAttachment ? "Buka Lampiran Dokumen" : "Buka Pesan Chat";
+
     const html = `
-        <span class="badge" style="background:#eff6ff; color:#1d4ed8;">Pesan Chat Masuk</span>
+        <span class="badge" style="background:${badgeBg}; color:${badgeColor}; font-weight:700;">${badgeText}</span>
         <h2>Halo, ${recipientName}!</h2>
-        <p>Anda menerima pesan chat baru dari <strong>${senderName}</strong> pada sistem portal Kerja Praktik:</p>
-        <div style="background:#f8fafc; padding:16px; border-left:4px solid #0284c7; border-radius:6px; margin:16px 0; font-style:italic;">
+        <p>Anda menerima ${category.toLowerCase()} baru dari <strong>${senderName}</strong> pada sistem portal Kerja Praktik:</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid ${borderColor}; border-radius:6px; margin:16px 0; font-style:italic;">
             "${previewMessage}"
         </div>
-        <p>Silakan buka portal untuk membalas pesan secara langsung.</p>
-        <a href="https://kp.daffathan-labs.my.id/login" class="btn">Buka Pesan Chat</a>
+        <p>Silakan buka portal untuk melihat ${category.toLowerCase()} secara langsung.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn">${btnText}</a>
     `;
     return await sendEmailNotification(recipientEmail, subject, html);
 }
@@ -379,10 +388,64 @@ async function notifyPengajuanRevision(studentEmail, studentName, title, dosenNa
     return await sendEmailNotification(studentEmail, subject, html);
 }
 
+/**
+ * Notifikasi Dosen saat Usulan Judul Diteruskan oleh Koordinator
+ */
+async function notifyDosenPengajuanForwarded(dosenEmail, dosenName, studentName, title) {
+    const subject = `[Penugasan Judul Baru] ${studentName} - Portal KP Universitas Pancasila`;
+    const html = `
+        <span class="badge" style="background:#e0e7ff; color:#3730a3;">Penugasan Usulan Judul</span>
+        <h2>Usulan Judul Diteruskan Kepada Anda</h2>
+        <p>Yth. <strong>${dosenName}</strong>,</p>
+        <p>Koordinator KP/Skripsi telah menyetujui dan meneruskan pengajuan judul mahasiswa bimbingan Anda:</p>
+        <div style="background:#f8fafc; padding:16px; border-left:4px solid #4338ca; border-radius:6px; margin:16px 0;">
+            <p style="margin:0; font-weight:600; color:#0f172a;">Mahasiswa:</p>
+            <p style="margin:4px 0 12px 0; color:#334155; font-weight:700;">${studentName}</p>
+            <p style="margin:0; font-weight:600; color:#0f172a;">Judul Usulan:</p>
+            <p style="margin:4px 0 0 0; color:#3730a3; font-style:italic;">"${title}"</p>
+        </div>
+        <p>Silakan buka portal SIKP untuk memberikan persetujuan atau catatan revisi.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn" style="background:#4338ca;">Tinjau Pengajuan Judul</a>
+    `;
+    return await sendEmailNotification(dosenEmail, subject, html);
+}
+
+/**
+ * Notifikasi Pengumuman & Acara Baru
+ */
+async function notifyNewAcara(recipientEmail, recipientName, senderName, title, content, type = "ANNOUNCEMENT") {
+    const isAssignment = type === "ASSIGNMENT";
+    const categoryName = isAssignment ? "Instruksi / Berita Acara" : "Pengumuman";
+    const badgeText = isAssignment ? "Instruksi Baru" : "Pengumuman Baru";
+    const badgeBg = isAssignment ? "#fef3c7" : "#eff6ff";
+    const badgeColor = isAssignment ? "#b45309" : "#1d4ed8";
+    const borderColor = isAssignment ? "#f59e0b" : "#0284c7";
+
+    const subject = `[${categoryName}] ${title} - Portal KP Universitas Pancasila`;
+    
+    // Strip HTML tags for clean email preview
+    const cleanContent = content ? content.replace(/<[^>]*>?/gm, '').trim() : "";
+    const previewMessage = cleanContent.length > 200 ? cleanContent.substring(0, 200) + "..." : cleanContent;
+
+    const html = `
+        <span class="badge" style="background:${badgeBg}; color:${badgeColor}; font-weight:700;">${badgeText}</span>
+        <h2>Halo, ${recipientName}!</h2>
+        <p><strong>${senderName}</strong> telah menerbitkan ${categoryName.toLowerCase()} baru pada portal Kerja Praktik:</p>
+        <div style="background:#f8fafc; padding:18px; border-left:4px solid ${borderColor}; border-radius:8px; margin:16px 0;">
+            <h3 style="margin:0 0 8px 0; color:#0f172a; font-size:16px;">${title}</h3>
+            <p style="margin:0; color:#334155; font-size:14px; line-height:1.6;">${previewMessage || "Silakan lihat detail pengumuman pada portal."}</p>
+        </div>
+        <p>Silakan buka portal untuk membaca pengumuman dan instruksi selengkapnya.</p>
+        <a href="https://kp.daffathan-labs.my.id/login" class="btn">Lihat Pengumuman</a>
+    `;
+    return await sendEmailNotification(recipientEmail, subject, html);
+}
+
 module.exports = {
     sendEmailNotification,
     notifyJudulApproved,
     notifyPengajuanForwardedToDosen,
+    notifyDosenPengajuanForwarded,
     notifyTaskAssigned,
     notifyDraftUploaded,
     notifyBimbinganReviewed,
@@ -391,5 +454,6 @@ module.exports = {
     notifyNewChatMessage,
     notifyBimbinganOrLogbook,
     notifyDeadlineWarning,
-    notifyPengajuanRevision
+    notifyPengajuanRevision,
+    notifyNewAcara
 };

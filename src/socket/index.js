@@ -37,18 +37,23 @@ module.exports = (io) => {
       const { senderId, receiverId, roomId, content, attachmentUrl, attachmentType, fileName, isPublic, replyToId } = data;
 
       try {
-        const sid = parseInt(senderId);
+        const actualSenderId = socket.userId ? parseInt(socket.userId) : parseInt(senderId);
         
+        if (!actualSenderId || isNaN(actualSenderId)) {
+          socket.emit('error', { message: 'Sender identity not valid' });
+          return;
+        }
+
         // Check if user is banned from public chat
         if (isPublic) {
-            const user = await prisma.user.findUnique({ where: { id: sid } });
+            const user = await prisma.user.findUnique({ where: { id: actualSenderId } });
             if (user?.isBannedFromPublic) {
                 socket.emit('error', { message: 'Anda telah dikeluarkan dari Ruang Publik oleh Admin.' });
                 return;
             }
         }
         let messageData = {
-            senderId: parseInt(senderId),
+            senderId: actualSenderId,
             content,
             attachmentUrl,
             attachmentType,
@@ -72,7 +77,8 @@ module.exports = (io) => {
                   username: true, 
                   role: true,
                   mahasiswa: { select: { nama: true } },
-                  dosen: { select: { nama: true } }
+                  dosen: { select: { nama: true } },
+                  staf: { select: { nama: true } }
               }
             },
             receiver: {
@@ -81,14 +87,15 @@ module.exports = (io) => {
                   username: true, 
                   role: true,
                   mahasiswa: { select: { nama: true } },
-                  dosen: { select: { nama: true } }
+                  dosen: { select: { nama: true } },
+                  staf: { select: { nama: true } }
               }
             },
             parent: {
                  select: {
                      id: true,
                      content: true,
-                     sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
+                     sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } }, staf: { select: { nama: true } } } }
                  }
             },
             room: {
@@ -99,16 +106,21 @@ module.exports = (io) => {
           }
         });
 
+        const getDisplayName = (u) => {
+            if (!u) return "Seseorang";
+            const role = (u.role || '').toLowerCase();
+            if (role === 'admin') return u.staf?.nama || "Administrator";
+            return u.mahasiswa?.nama || u.dosen?.nama || u.staf?.nama || u.username || "Seseorang";
+        };
+
         // Format sender username to full name for immediate display
         if (message.sender) {
-            const fullName = message.sender.mahasiswa?.nama || message.sender.dosen?.nama || message.sender.username;
-            message.sender.username = fullName;
+            message.sender.username = getDisplayName(message.sender);
         }
 
         // Format parent sender username if it's a reply
         if (message.parent && message.parent.sender) {
-            const parentFullName = message.parent.sender.mahasiswa?.nama || message.parent.sender.dosen?.nama || message.parent.sender.username;
-            message.parent.sender.username = parentFullName;
+            message.parent.sender.username = getDisplayName(message.parent.sender);
         }
 
         if (isPublic) {
@@ -116,11 +128,7 @@ module.exports = (io) => {
             socket.emit('message_sent', message);
         } else if (roomId) {
             const rid = parseInt(roomId);
-            // Broadcast to the group room (reaches all online members in that room)
-            // Use io.to() to reach everyone including sender if they are in multiple tabs,
-            // but useChat handles self-filtering.
             socket.to(`room_${rid}`).emit('receive_message', message);
-            // Confirm to sender
             socket.emit('message_sent', message);
         } else {
             // Private DM
@@ -131,7 +139,7 @@ module.exports = (io) => {
             if (receiverId) {
                 Promise.all([
                     prisma.user.findUnique({
-                        where: { id: parseInt(senderId) },
+                        where: { id: actualSenderId },
                         include: { mahasiswa: true, dosen: true, staf: true }
                     }),
                     prisma.user.findUnique({
@@ -152,13 +160,16 @@ module.exports = (io) => {
                     // RULE 2: Dosen / Staf -> Mahasiswa (KIRIM EMAIL)
                     // RULE 3: Anyone -> Dosen (KIRIM EMAIL TO DOSEN)
                     const targetEmail = recUser?.mahasiswa?.email || recUser?.dosen?.email || recUser?.staf?.email;
-                    const targetName = recUser?.mahasiswa?.nama || recUser?.dosen?.nama || recUser?.staf?.nama || recUser?.username;
-                    const senderName = sendUser?.mahasiswa?.nama || sendUser?.dosen?.nama || sendUser?.staf?.nama || sendUser?.username || "Seseorang";
+                    const targetName = getDisplayName(recUser);
+                    const senderName = getDisplayName(sendUser);
+                    const isAttachment = !!attachmentUrl || (content && (content.includes("Mengirimkan sebuah lampiran file") || content.includes("/uploads/")));
                     const chatText = content || (attachmentUrl ? "Mengirimkan sebuah lampiran file" : "Pesan baru");
 
                     if (targetEmail) {
-                        notifyNewChatMessage(targetEmail, targetName, senderName, chatText)
-                            .catch(e => console.error("Chat email notify error:", e));
+                        notifyNewChatMessage(targetEmail, targetName, senderName, chatText, {
+                            isAttachment,
+                            category: isAttachment ? "Lampiran Dokumen" : "Pesan Chat"
+                        }).catch(e => console.error("Chat email notify error:", e));
                     }
                 }).catch(e => console.error("User lookup error for chat email:", e));
             }

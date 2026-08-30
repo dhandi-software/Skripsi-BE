@@ -551,9 +551,22 @@ const getBimbinganHistory = async (req, res) => {
         const { mahasiswaId, topik } = req.params;
         const decodedTopik = decodeURIComponent(topik);
 
+        let nim = mahasiswaId;
+        if (mahasiswaId === 'undefined' || !isNaN(Number(mahasiswaId))) {
+            const mhs = await MahasiswaModel.findFirst({
+                where: {
+                    OR: [
+                        { nim: mahasiswaId },
+                        { userId: parseInt(mahasiswaId) || 0 }
+                    ]
+                }
+            });
+            if (mhs) nim = mhs.nim;
+        }
+
         const history = await BimbinganModel.findMany({
             where: {
-                mahasiswaNim: mahasiswaId,
+                mahasiswaNim: nim,
                 topik: decodedTopik
             },
             orderBy: { versi: 'asc' },

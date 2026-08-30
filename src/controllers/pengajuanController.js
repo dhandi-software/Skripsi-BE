@@ -1,5 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
-const { notifyJudulApproved, notifyPengajuanForwardedToDosen, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
+const { notifyJudulApproved, notifyPengajuanForwardedToDosen, notifyDosenPengajuanForwarded, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -438,15 +438,25 @@ exports.updatePengajuanStatus = async (req, res) => {
                     include: { user: true }
                 });
                 
-                if (targetDosen && targetDosen.user) {
-                    await prisma.message.create({
-                        data: {
-                            senderId: req.user.id,
-                            receiverId: targetDosen.user.id,
-                            content: `New Title Proposal forwarded to you: "${pengajuan.judul}" by ${pengajuan.mahasiswa.nama}`,
-                            isRead: false
-                        }
-                    });
+                if (targetDosen) {
+                    if (targetDosen.user) {
+                        await prisma.message.create({
+                            data: {
+                                senderId: req.user.id,
+                                receiverId: targetDosen.user.id,
+                                content: `Usulan Judul baru diteruskan kepada Anda: "${pengajuan.judul}" oleh ${pengajuan.mahasiswa?.nama || 'Mahasiswa'}`,
+                                isRead: false
+                            }
+                        });
+                    }
+                    if (targetDosen.email) {
+                        notifyDosenPengajuanForwarded(
+                            targetDosen.email,
+                            targetDosen.nama,
+                            pengajuan.mahasiswa?.nama || 'Mahasiswa',
+                            pengajuan.judul
+                        ).catch(e => console.error("Email notify dosen error:", e));
+                    }
                 }
             } catch (dosenNotifyError) {
                 console.error("Failed to notify dosen pembimbing:", dosenNotifyError);
