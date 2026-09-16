@@ -1,5 +1,5 @@
 const prisma = require('../prisma');
-const { notifyNewChatMessage } = require('../utils/emailService');
+
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
@@ -134,45 +134,6 @@ module.exports = (io) => {
             // Private DM
             io.to(`user_${receiverId}`).emit('receive_message', message);
             socket.emit('message_sent', message);
-
-            // Send Email Notification to Recipient (Filtered by Role Rules)
-            if (receiverId) {
-                Promise.all([
-                    prisma.user.findUnique({
-                        where: { id: actualSenderId },
-                        include: { mahasiswa: true, dosen: true, staf: true }
-                    }),
-                    prisma.user.findUnique({
-                        where: { id: parseInt(receiverId) },
-                        include: { mahasiswa: true, dosen: true, staf: true }
-                    })
-                ]).then(([sendUser, recUser]) => {
-                    if (!sendUser || !recUser) return;
-
-                    const senderRole = (sendUser.role || '').toUpperCase();
-                    const receiverRole = (recUser.role || '').toUpperCase();
-
-                    // RULE 1: Sesama Mahasiswa -> Mahasiswa (JANGAN KIRIM NOTIFIKASI EMAIL)
-                    if (senderRole === 'MAHASISWA' && receiverRole === 'MAHASISWA') {
-                        return; // Dibatasi agar sesama mahasiswa tidak saling spaming email
-                    }
-
-                    // RULE 2: Dosen / Staf -> Mahasiswa (KIRIM EMAIL)
-                    // RULE 3: Anyone -> Dosen (KIRIM EMAIL TO DOSEN)
-                    const targetEmail = recUser?.mahasiswa?.email || recUser?.dosen?.email || recUser?.staf?.email;
-                    const targetName = getDisplayName(recUser);
-                    const senderName = getDisplayName(sendUser);
-                    const isAttachment = !!attachmentUrl || (content && (content.includes("Mengirimkan sebuah lampiran file") || content.includes("/uploads/")));
-                    const chatText = content || (attachmentUrl ? "Mengirimkan sebuah lampiran file" : "Pesan baru");
-
-                    if (targetEmail) {
-                        notifyNewChatMessage(targetEmail, targetName, senderName, chatText, {
-                            isAttachment,
-                            category: isAttachment ? "Lampiran Dokumen" : "Pesan Chat"
-                        }).catch(e => console.error("Chat email notify error:", e));
-                    }
-                }).catch(e => console.error("User lookup error for chat email:", e));
-            }
         }
 
       } catch (error) {

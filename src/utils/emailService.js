@@ -31,25 +31,26 @@ async function sendEmailNotification(to, subject, htmlContent) {
 
     const smtpUser = process.env.SMTP_USER;
     const smtpPass = process.env.SMTP_PASS;
-    const emailFrom = process.env.EMAIL_FROM || '"Portal Akademik UP" <teknikinformatikakerjapraktik@gmail.com>';
+    const emailFrom = process.env.EMAIL_FROM || `"Portal KP UP" <${smtpUser || 'danabil3112@gmail.com'}>`;
 
-    const logoUrl = "https://i.pinimg.com/736x/06/22/bc/0622bca0fc32fe9df332c9354fcfc411.jpg";
-    const logoHtml = `<img src="${logoUrl}" alt="Logo Universitas Pancasila" style="height:64px; width:auto; border-radius:8px; margin-bottom:8px; display:inline-block;" /><br/>`;
+    const logoUrl = "https://uppress.univpancasila.ac.id/wp-content/uploads/2023/05/UP4.png";
+    const logoHtml = `<img src="${logoUrl}" alt="Logo UP" style="height:56px; width:auto; border-radius:6px; margin-bottom:8px; display:inline-block;" /><br/>`;
 
     const formattedHtml = `
     <!DOCTYPE html>
-    <html>
+    <html lang="id">
     <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
-            .container { max-width: 600px; background: #ffffff; margin: 0 auto; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-            .header { background: #003366; color: #ffffff; padding: 24px; text-align: center; }
-            .header h1 { margin: 6px 0 0 0; font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
-            .content { padding: 30px; color: #333333; line-height: 1.6; }
-            .footer { background: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
-            .badge { display: inline-block; padding: 6px 14px; font-weight: 700; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
-            .btn { display: inline-block; background: #FF7A00; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: 700; margin-top: 16px; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; }
+            .container { max-width: 580px; background: #ffffff; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; }
+            .header { background: #003366; color: #ffffff; padding: 20px; text-align: center; }
+            .header h1 { margin: 6px 0 0 0; font-size: 18px; font-weight: 700; }
+            .content { padding: 24px; color: #1f2937; line-height: 1.6; font-size: 14px; }
+            .footer { background: #f9fafb; padding: 14px; text-align: center; font-size: 11px; color: #6b7280; border-top: 1px solid #f3f4f6; }
+            .badge { display: inline-block; padding: 4px 12px; font-weight: 700; border-radius: 6px; font-size: 12px; margin-bottom: 12px; }
+            .btn { display: inline-block; background: #FF7A00; color: #ffffff !important; padding: 10px 20px; text-decoration: none; border-radius: 6px; font-weight: 700; margin-top: 14px; }
         </style>
     </head>
     <body>
@@ -57,14 +58,14 @@ async function sendEmailNotification(to, subject, htmlContent) {
             <div class="header">
                 ${logoHtml}
                 <h1>UNIVERSITAS PANCASILA</h1>
-                <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Sistem Informasi Kerja Praktik & Skripsi</p>
+                <p style="margin: 4px 0 0 0; font-size: 12px; opacity: 0.9;">Sistem Informasi Kerja Praktik & Skripsi</p>
             </div>
             <div class="content">
                 ${htmlContent}
             </div>
             <div class="footer">
-                &copy; ${new Date().getFullYear()} Fakultas Teknik Universitas Pancasila. All rights reserved.<br>
-                Email ini dikirimkan secara otomatis oleh sistem, mohon tidak membalas email ini.
+                Fakultas Teknik Universitas Pancasila<br>
+                Email notifikasi otomatis dari sistem SIKP.
             </div>
         </div>
     </body>
@@ -76,13 +77,22 @@ async function sendEmailNotification(to, subject, htmlContent) {
         return true;
     }
 
+    const plainText = htmlContent.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim();
+
     try {
         const mailOptions = {
             from: emailFrom,
             to: to,
-            replyTo: 'teknikinformatikakerjapraktik@gmail.com',
+            replyTo: smtpUser,
             subject: subject,
-            html: formattedHtml
+            text: plainText,
+            html: formattedHtml,
+            headers: {
+                'X-Priority': '3',
+                'X-MSMail-Priority': 'Normal',
+                'Importance': 'Normal',
+                'X-Mailer': 'SIKP-UP-Notifier'
+            }
         };
 
         const info = await getTransporter().sendMail(mailOptions);
@@ -236,7 +246,7 @@ async function notifySidangScheduled(studentEmail, studentName, dateStr, locatio
  * Notifikasi Pembuatan Akun Baru
  */
 async function notifyAccountCreated(userEmail, name, role, rawPassword) {
-    const subject = `[Akun Resmi] Pendaftaran Akun Portal KP Universitas Pancasila`;
+    const subject = `Pendaftaran Akun Portal KP Universitas Pancasila - ${name}`;
     const html = `
         <span class="badge" style="background:#e0e7ff; color:#3730a3;">Akun Portal KP</span>
         <h2>Selamat Datang, ${name}!</h2>
