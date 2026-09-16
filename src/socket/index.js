@@ -1,5 +1,6 @@
 const prisma = require('../prisma');
 
+
 module.exports = (io) => {
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
@@ -36,18 +37,23 @@ module.exports = (io) => {
       const { senderId, receiverId, roomId, content, attachmentUrl, attachmentType, fileName, isPublic, replyToId } = data;
 
       try {
-        const sid = parseInt(senderId);
+        const actualSenderId = socket.userId ? parseInt(socket.userId) : parseInt(senderId);
         
+        if (!actualSenderId || isNaN(actualSenderId)) {
+          socket.emit('error', { message: 'Sender identity not valid' });
+          return;
+        }
+
         // Check if user is banned from public chat
         if (isPublic) {
-            const user = await prisma.user.findUnique({ where: { id: sid } });
+            const user = await prisma.user.findUnique({ where: { id: actualSenderId } });
             if (user?.isBannedFromPublic) {
                 socket.emit('error', { message: 'Anda telah dikeluarkan dari Ruang Publik oleh Admin.' });
                 return;
             }
         }
         let messageData = {
-            senderId: parseInt(senderId),
+            senderId: actualSenderId,
             content,
             attachmentUrl,
             attachmentType,
@@ -71,7 +77,8 @@ module.exports = (io) => {
                   username: true, 
                   role: true,
                   mahasiswa: { select: { nama: true } },
-                  dosen: { select: { nama: true } }
+                  dosen: { select: { nama: true } },
+                  staf: { select: { nama: true } }
               }
             },
             receiver: {
@@ -80,14 +87,15 @@ module.exports = (io) => {
                   username: true, 
                   role: true,
                   mahasiswa: { select: { nama: true } },
-                  dosen: { select: { nama: true } }
+                  dosen: { select: { nama: true } },
+                  staf: { select: { nama: true } }
               }
             },
             parent: {
                  select: {
                      id: true,
                      content: true,
-                     sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
+                     sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } }, staf: { select: { nama: true } } } }
                  }
             },
             room: {
@@ -98,16 +106,21 @@ module.exports = (io) => {
           }
         });
 
+        const getDisplayName = (u) => {
+            if (!u) return "Seseorang";
+            const role = (u.role || '').toLowerCase();
+            if (role === 'admin') return u.staf?.nama || "Administrator";
+            return u.mahasiswa?.nama || u.dosen?.nama || u.staf?.nama || u.username || "Seseorang";
+        };
+
         // Format sender username to full name for immediate display
         if (message.sender) {
-            const fullName = message.sender.mahasiswa?.nama || message.sender.dosen?.nama || message.sender.username;
-            message.sender.username = fullName;
+            message.sender.username = getDisplayName(message.sender);
         }
 
         // Format parent sender username if it's a reply
         if (message.parent && message.parent.sender) {
-            const parentFullName = message.parent.sender.mahasiswa?.nama || message.parent.sender.dosen?.nama || message.parent.sender.username;
-            message.parent.sender.username = parentFullName;
+            message.parent.sender.username = getDisplayName(message.parent.sender);
         }
 
         if (isPublic) {
@@ -115,11 +128,7 @@ module.exports = (io) => {
             socket.emit('message_sent', message);
         } else if (roomId) {
             const rid = parseInt(roomId);
-            // Broadcast to the group room (reaches all online members in that room)
-            // Use io.to() to reach everyone including sender if they are in multiple tabs,
-            // but useChat handles self-filtering.
             socket.to(`room_${rid}`).emit('receive_message', message);
-            // Confirm to sender
             socket.emit('message_sent', message);
         } else {
             // Private DM

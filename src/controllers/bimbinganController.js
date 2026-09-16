@@ -1,4 +1,5 @@
 const { BimbinganModel, DosenModel, MahasiswaModel, PengajuanJudulModel, BimbinganAnnotationModel } = require('../models');
+const { notifyTaskAssigned, notifyDraftUploaded, notifyBimbinganReviewed, notifyBimbinganOrLogbook } = require('../utils/emailService');
 
 const getAllBimbingan = async (req, res) => {
     try {
@@ -289,8 +290,14 @@ const assignBimbinganTask = async (req, res) => {
         });
 
         const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: mahasiswaId } });
-        if (mahasiswa && mahasiswa.userId) {
-            req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
+        if (mahasiswa) {
+            if (mahasiswa.userId) {
+                req.app.get('io').to(mahasiswa.userId.toString()).emit('bimbingan_assigned', newBimbingan);
+            }
+            if (mahasiswa.email) {
+                notifyTaskAssigned(mahasiswa.email, mahasiswa.nama, dosen.nama, topik || "Tugas Bimbingan KP", jadwalBimbingan)
+                    .catch(e => console.error("Bimbingan assigned email notify error:", e));
+            }
         }
 
         res.status(201).json(newBimbingan);
@@ -412,8 +419,23 @@ const uploadDraftMahasiswa = async (req, res) => {
             });
 
             const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
-            if (dosen && dosen.userId) {
-                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
+            const mhs = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
+            const mhsName = mhs ? mhs.nama : "Mahasiswa";
+
+            if (dosen) {
+                if (dosen.userId) {
+                    req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', newBimbingan);
+                }
+                if (dosen.email) {
+                    notifyDraftUploaded(
+                        dosen.email,
+                        dosen.nama,
+                        mhsName,
+                        bimbinganInfo.mahasiswaNim,
+                        bimbinganInfo.topik,
+                        finalKeterangan
+                    ).catch(e => console.error("Email notification to dosen error:", e));
+                }
             }
 
             return res.json(newBimbingan);
@@ -428,8 +450,23 @@ const uploadDraftMahasiswa = async (req, res) => {
             });
 
             const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
-            if (dosen && dosen.userId) {
-                req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
+            const mhs = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
+            const mhsName = mhs ? mhs.nama : "Mahasiswa";
+
+            if (dosen) {
+                if (dosen.userId) {
+                    req.app.get('io').to(`user_${dosen.userId}`).emit('bimbingan_submitted', bimbingan);
+                }
+                if (dosen.email) {
+                    notifyDraftUploaded(
+                        dosen.email,
+                        dosen.nama,
+                        mhsName,
+                        bimbinganInfo.mahasiswaNim,
+                        bimbinganInfo.topik,
+                        finalKeterangan
+                    ).catch(e => console.error("Email notification to dosen error:", e));
+                }
             }
 
             return res.json(bimbingan);
@@ -482,9 +519,24 @@ const uploadRevisiDosen = async (req, res) => {
             data: updateData
         });
 
+        const dosen = await DosenModel.findUnique({ where: { nidn: bimbinganInfo.dosenNidn } });
+        const dosenName = dosen ? dosen.nama : "Dosen Pembimbing";
+
         const mahasiswa = await MahasiswaModel.findUnique({ where: { nim: bimbinganInfo.mahasiswaNim } });
-        if (mahasiswa && mahasiswa.userId) {
-            req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
+        if (mahasiswa) {
+            if (mahasiswa.userId) {
+                req.app.get('io').to(`user_${mahasiswa.userId}`).emit('bimbingan_reviewed', bimbingan);
+            }
+            if (mahasiswa.email) {
+                notifyBimbinganReviewed(
+                    mahasiswa.email,
+                    mahasiswa.nama,
+                    dosenName,
+                    bimbinganInfo.topik || "Bimbingan KP",
+                    status || 'REVISION',
+                    catatan || "Catatan revisi baru dari Dosen Pembimbing"
+                ).catch(e => console.error("Bimbingan email notify error:", e));
+            }
         }
 
         res.json(bimbingan);
@@ -499,9 +551,22 @@ const getBimbinganHistory = async (req, res) => {
         const { mahasiswaId, topik } = req.params;
         const decodedTopik = decodeURIComponent(topik);
 
+        let nim = mahasiswaId;
+        if (mahasiswaId === 'undefined' || !isNaN(Number(mahasiswaId))) {
+            const mhs = await MahasiswaModel.findFirst({
+                where: {
+                    OR: [
+                        { nim: mahasiswaId },
+                        { userId: parseInt(mahasiswaId) || 0 }
+                    ]
+                }
+            });
+            if (mhs) nim = mhs.nim;
+        }
+
         const history = await BimbinganModel.findMany({
             where: {
-                mahasiswaNim: mahasiswaId,
+                mahasiswaNim: nim,
                 topik: decodedTopik
             },
             orderBy: { versi: 'asc' },

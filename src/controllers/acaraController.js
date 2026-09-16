@@ -1,4 +1,8 @@
 const prisma = require('../prisma');
+const sharp = require('sharp');
+const path = require('path');
+const fs = require('fs');
+const { notifyNewAcara } = require('../utils/emailService');
 
 /**
  * @api {get} /acara Get all Acara posts
@@ -143,11 +147,19 @@ const getAcaraById = async (req, res) => {
 const createAcara = async (req, res) => {
     try {
         const { title, content, type } = req.body;
+        if (!title || !title.trim()) {
+            return res.status(400).json({ message: "Judul pengumuman wajib diisi" });
+        }
+        if (title.trim().length > 150) {
+            return res.status(400).json({ message: "Judul pengumuman maksimal 150 karakter" });
+        }
+
         let dosen = await prisma.dosen.findUnique({
             where: { userId: req.user.id }
         });
 
-        if (!dosen && (req.user.role.toUpperCase() === 'ADMIN' || req.user.role.toUpperCase() === 'STAF')) {
+        const userRole = req.user.role ? req.user.role.toUpperCase() : '';
+        if (!dosen && (userRole.includes('ADMIN') || userRole.includes('STAF') || userRole.includes('KAPRODI'))) {
             dosen = await prisma.dosen.findFirst();
         }
 
@@ -155,7 +167,7 @@ const createAcara = async (req, res) => {
 
         const acara = await prisma.acara.create({
             data: {
-                title,
+                title: title.trim(),
                 content,
                 type: type || "ASSIGNMENT",
                 dosenNidn: dosen.nidn,
@@ -173,6 +185,19 @@ const createAcara = async (req, res) => {
             });
         }
 
+        // Send Email Notifications to Students
+        const senderName = req.user.username || (dosen ? dosen.nama : "Admin / Staf");
+        prisma.mahasiswa.findMany({ select: { email: true, nama: true } })
+            .then(students => {
+                students.forEach(s => {
+                    if (s.email) {
+                        notifyNewAcara(s.email, s.nama, senderName, acara.title, acara.content, acara.type)
+                            .catch(err => console.error("Acara email notification error:", err));
+                    }
+                });
+            })
+            .catch(err => console.error("Fetch students for Acara email error:", err));
+
         res.status(201).json(acara);
     } catch (error) {
         console.error("Create Acara Error:", error);
@@ -184,10 +209,14 @@ const updateAcara = async (req, res) => {
     try {
         const { id } = req.params;
         const { title, content, type } = req.body;
+
+        if (title && title.trim().length > 150) {
+            return res.status(400).json({ message: "Judul pengumuman maksimal 150 karakter" });
+        }
         
         const acara = await prisma.acara.update({
             where: { id: parseInt(id) },
-            data: { title, content, type }
+            data: { title: title ? title.trim() : undefined, content, type }
         });
         res.json(acara);
     } catch (error) {
@@ -244,8 +273,27 @@ const uploadFile = async (req, res) => {
             return res.status(400).json({ message: "No file uploaded" });
         }
         
-        // Return relative path for static serving
-        const fileUrl = `/uploads/${req.file.filename}`;
+        const isImage = req.file.mimetype && req.file.mimetype.startsWith('image/');
+        let finalFilename = req.file.filename;
+
+        if (isImage) {
+            const originalPath = req.file.path;
+            const ext = path.extname(req.file.filename);
+            const baseName = path.basename(req.file.filename, ext);
+            const webpFilename = `${baseName}.webp`;
+            const webpPath = path.join(path.dirname(originalPath), webpFilename);
+
+            await sharp(originalPath)
+                .webp({ quality: 85 })
+                .toFile(webpPath);
+
+            if (originalPath !== webpPath && fs.existsSync(originalPath)) {
+                try { fs.unlinkSync(originalPath); } catch (e) {}
+            }
+            finalFilename = webpFilename;
+        }
+
+        const fileUrl = `/uploads/${finalFilename}`;
         res.json({ 
             url: fileUrl,
             originalName: req.file.originalname,
@@ -253,7 +301,12 @@ const uploadFile = async (req, res) => {
         });
     } catch (error) {
         console.error("Upload File Error:", error);
-        res.status(500).json({ error: error.message });
+        const fileUrl = `/uploads/${req.file.filename}`;
+        res.json({ 
+            url: fileUrl,
+            originalName: req.file.originalname,
+            size: req.file.size
+        });
     }
 };
 

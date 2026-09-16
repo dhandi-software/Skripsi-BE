@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
+const { notifyJudulApproved, notifyPengajuanForwardedToDosen, notifyDosenPengajuanForwarded, notifyPengajuanRevision, notifyBimbinganOrLogbook } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 exports.createPengajuan = async (req, res) => {
@@ -157,15 +158,25 @@ exports.createPengajuan = async (req, res) => {
                      include: { user: true }
                  });
                 
-                 if (dosen && dosen.user) {
-                     await prisma.message.create({
-                        data: {
-                            senderId: req.user.id,
-                            receiverId: dosen.user.id,
-                            content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
-                            isRead: false
-                        }
-                    });
+                 if (dosen) {
+                     if (dosen.user) {
+                         await prisma.message.create({
+                            data: {
+                                senderId: req.user.id,
+                                receiverId: dosen.user.id,
+                                content: `New Title Proposal: "${judul}" by ${mahasiswa.nama}`,
+                                isRead: false
+                            }
+                        });
+                     }
+                     if (dosen.email) {
+                         notifyBimbinganOrLogbook(
+                             dosen.email,
+                             dosen.nama,
+                             `[Pengajuan Masuk] Usulan Judul KP Baru - ${mahasiswa.nama}`,
+                             `Mahasiswa ${mahasiswa.nama} (${mahasiswa.nim}) telah mengusulkan judul Kerja Praktik baru: "${judul}". Silakan periksa portal untuk meninjau.`
+                         ).catch(e => console.error("Email notify dosen error:", e));
+                     }
                  }
             }
         } catch (notifyError) {
@@ -373,7 +384,7 @@ exports.updatePengajuanStatus = async (req, res) => {
             include: { mahasiswa: { include: { user: true } } }
         });
 
-        // Notify Mahasiswa
+        // Notify Mahasiswa via In-App Message
         if (pengajuan.mahasiswa && pengajuan.mahasiswa.user) {
             try {
                 let msgContent = `Your Title Proposal "${pengajuan.judul}" has been ${dbStatus}.`;
@@ -392,6 +403,33 @@ exports.updatePengajuanStatus = async (req, res) => {
             }
         }
 
+        // Kirim Notifikasi Email Otomatis ke Email Masing-Masing Mahasiswa Sesuai Status (APPROVED, REVISION, REJECTED)
+        if (pengajuan.mahasiswa && pengajuan.mahasiswa.email) {
+            const studentEmail = pengajuan.mahasiswa.email;
+            const studentName = pengajuan.mahasiswa.nama;
+            const title = pengajuan.judul;
+
+            prisma.dosen.findUnique({ where: { nidn: pengajuan.dosenNidn } })
+                .then(targetDosen => targetDosen ? targetDosen.nama : "Dosen Pembimbing")
+                .catch(() => "Dosen Pembimbing")
+                .then(dosenName => {
+                    console.log(`📧 [NOTIFY STATUS] Sending email for status '${dbStatus}' to ${studentEmail}`);
+                    if (dbStatus === 'APPROVED') {
+                        notifyJudulApproved(studentEmail, studentName, title, dosenName)
+                            .catch(err => console.error("Email approve notify error:", err.message));
+                    } else if (dbStatus === 'PENDING') {
+                        notifyPengajuanForwardedToDosen(studentEmail, studentName, title, dosenName)
+                            .catch(err => console.error("Email forwarded notify error:", err.message));
+                    } else if (dbStatus === 'REVISION' || dbStatus === 'REVISION_KOORDINATOR' || dbStatus === 'REJECTED' || dbStatus === 'REJECTED_KOORDINATOR') {
+                        const deadlineStr = pengajuan.deadlineRevisi ? new Date(pengajuan.deadlineRevisi).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+                        notifyPengajuanRevision(studentEmail, studentName, title, dosenName, remarks, deadlineStr)
+                            .catch(err => console.error("Email revision notify error:", err.message));
+                    }
+                });
+        } else {
+            console.warn(`⚠️ [NOTIFY STATUS] Student email missing for pengajuan ID ${id}`);
+        }
+
         // Jika Koordinator approve (status jadi PENDING), beritahu Dosen Pembimbing
         if (dbStatus === 'PENDING') {
             try {
@@ -400,15 +438,25 @@ exports.updatePengajuanStatus = async (req, res) => {
                     include: { user: true }
                 });
                 
-                if (targetDosen && targetDosen.user) {
-                    await prisma.message.create({
-                        data: {
-                            senderId: req.user.id,
-                            receiverId: targetDosen.user.id,
-                            content: `New Title Proposal forwarded to you: "${pengajuan.judul}" by ${pengajuan.mahasiswa.nama}`,
-                            isRead: false
-                        }
-                    });
+                if (targetDosen) {
+                    if (targetDosen.user) {
+                        await prisma.message.create({
+                            data: {
+                                senderId: req.user.id,
+                                receiverId: targetDosen.user.id,
+                                content: `Usulan Judul baru diteruskan kepada Anda: "${pengajuan.judul}" oleh ${pengajuan.mahasiswa?.nama || 'Mahasiswa'}`,
+                                isRead: false
+                            }
+                        });
+                    }
+                    if (targetDosen.email) {
+                        notifyDosenPengajuanForwarded(
+                            targetDosen.email,
+                            targetDosen.nama,
+                            pengajuan.mahasiswa?.nama || 'Mahasiswa',
+                            pengajuan.judul
+                        ).catch(e => console.error("Email notify dosen error:", e));
+                    }
                 }
             } catch (dosenNotifyError) {
                 console.error("Failed to notify dosen pembimbing:", dosenNotifyError);

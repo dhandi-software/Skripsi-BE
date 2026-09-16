@@ -1,16 +1,25 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
+const { notifyAccountCreated } = require('../utils/emailService');
 const prisma = new PrismaClient();
 
 const isValidEmailDomain = (email) => {
     if (!email || email.includes(" ")) return false;
-    const allowedDomains = ["@student.univ.ac.id", "@univ.ac.id", "@gmail.com"];
+    const allowedDomains = [
+        "@student.univ.ac.id", 
+        "@univ.ac.id", 
+        "@univpancasila.ac.id", 
+        "@student.univpancasila.ac.id", 
+        "@gmail.com"
+    ];
     return allowedDomains.some(domain => email.toLowerCase().endsWith(domain));
 };
 
 const createMahasiswa = async (req, res) => {
     try {
-        const { email, password, nama, nim, tahunMasuk, sksDicapai, ipk, sksNilaiD, batasStudi } = req.body;
+        const cleanEmail = req.body.email ? req.body.email.trim().toLowerCase() : "";
+        const { password, nama, nim, tahunMasuk, sksDicapai, ipk, sksNilaiD, batasStudi } = req.body;
+        const email = cleanEmail;
 
         // Basic Validation
         if (!email || !password || !nama || !nim || !tahunMasuk) {
@@ -18,7 +27,7 @@ const createMahasiswa = async (req, res) => {
         }
 
         if (!isValidEmailDomain(email)) {
-            return res.status(400).json({ message: "Email harus berakhiran @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
+            return res.status(400).json({ message: "Email harus berakhiran @univpancasila.ac.id, @student.univpancasila.ac.id, @student.univ.ac.id, @univ.ac.id, atau @gmail.com" });
         }
 
         // Check if user exists (Email or NIM as Username)
@@ -83,6 +92,10 @@ const createMahasiswa = async (req, res) => {
 
             return { user, mahasiswa };
         });
+
+        // Send Email Notification to Student
+        notifyAccountCreated(result.mahasiswa.email, result.mahasiswa.nama, 'Mahasiswa', password)
+            .catch(err => console.error("Email notify error:", err.message));
 
         res.status(201).json({ message: "Mahasiswa account created successfully", data: result });
 
@@ -203,6 +216,13 @@ const createMahasiswaMassal = async (req, res) => {
             return await Promise.all(userPromises);
         });
 
+        // Send Email Notification to each student in mass registration
+        results.forEach((item, idx) => {
+            const rawPass = users[idx] ? users[idx].password : "Password123!";
+            notifyAccountCreated(item.mahasiswa.email, item.mahasiswa.nama, 'Mahasiswa', rawPass)
+                .catch(err => console.error("Email notify mass error:", err.message));
+        });
+
         res.status(201).json({ message: "Mahasiswa accounts created successfully", count: results.length });
 
     } catch (error) {
@@ -319,6 +339,13 @@ const createDosenMassal = async (req, res) => {
             return await Promise.all(userPromises);
         });
 
+        // Send Email Notification to each dosen in mass registration
+        results.forEach((item, idx) => {
+            const rawPass = normalizedUsers[idx] ? normalizedUsers[idx].password : "Password123!";
+            notifyAccountCreated(item.dosen.email, item.dosen.nama, 'Dosen', rawPass)
+                .catch(err => console.error("Email notify mass dosen error:", err.message));
+        });
+
         res.status(201).json({ message: "Dosen accounts created successfully", count: results.length });
 
     } catch (error) {
@@ -393,6 +420,10 @@ const createDosen = async (req, res) => {
 
             return { user, dosen };
         });
+
+        // Send Email Notification to Dosen
+        notifyAccountCreated(result.dosen.email, result.dosen.nama, 'Dosen', password)
+            .catch(err => console.error("Email notify error:", err.message));
 
         res.status(201).json({ message: "Dosen account created successfully", data: result });
 
